@@ -1,0 +1,195 @@
+@using AlgorithmLab.Visualizer
+
+<div class="visualizer-container">
+    <div class="visualizer-header glass">
+        <div class="control-group">
+            <label class="control-label">Алгоритм:</label>
+            <select class="glass-select" @bind="selectedAlgorithm" disabled="@isSorting">
+                <option value="Bubble Sort">Bubble Sort (Пузырьком)</option>
+                <option value="Selection Sort">Selection Sort (Выбором)</option>
+                <option value="Insertion Sort">Insertion Sort (Вставками)</option>
+                <option value="Quick Sort">Quick Sort (Быстрая)</option>
+                <option value="Merge Sort">Merge Sort (Слиянием)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Размер (N): @arraySize</label>
+            <input type="range" class="glass-range" min="10" max="60" @bind="arraySize" @bind:event="oninput" @onchange="GenerateNewArray" disabled="@isSorting" />
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Скорость: @delayMs мс</label>
+            <input type="range" class="glass-range" min="5" max="300" step="5" @bind="delayMs" @bind:event="oninput" disabled="@isSorting" />
+        </div>
+
+        <div class="btn-group">
+            <button class="glass-btn primary" @onclick="GenerateNewArray" disabled="@isSorting">🎲 Новый массив</button>
+            @if (!isSorting)
+            {
+                <button class="glass-btn success" @onclick="StartSorting" disabled="@isCompleted">▶ Старт</button>
+            }
+            else
+            {
+                <button class="glass-btn danger" @onclick="PauseSorting">⏸ Пауза</button>
+            }
+            <button class="glass-btn secondary" @onclick="StepForward" disabled="@(isSorting || isCompleted || steps.Count == 0)">⏭ Шаг</button>
+            <button class="glass-btn warning" @onclick="ResetVisualizer" disabled="@isSorting">🔄 Сброс</button>
+        </div>
+    </div>
+
+    <!-- Информационная панель статистики -->
+    <div class="stats-panel glass">
+        <div class="stat-card">
+            <span class="stat-title">Сравнений:</span>
+            <span class="stat-value text-yellow">@currentSnapshot.Comparisons</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-title">Перестановок:</span>
+            <span class="stat-value text-red">@currentSnapshot.Swaps</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-title">Прогресс шагов:</span>
+            <span class="stat-value text-blue">@(currentStepIndex + 1) / @steps.Count</span>
+        </div>
+        <div class="stat-card status-card">
+            <span class="stat-title">Статус:</span>
+            <span class="stat-value text-green">@currentSnapshot.Message</span>
+        </div>
+    </div>
+
+    <!-- Графическая область со столбиками -->
+    <div class="bars-canvas glass">
+        @if (currentSnapshot.Array.Length > 0)
+        {
+            int maxVal = currentSnapshot.Array.Max();
+            @for (int i = 0; i < currentSnapshot.Array.Length; i++)
+            {
+                int val = currentSnapshot.Array[i];
+                double heightPercent = Math.Max(12, ((double)val / maxVal) * 92);
+                string barClass = GetBarClass(i);
+
+                <div class="bar-wrapper" style="width: @(100.0 / currentSnapshot.Array.Length)%">
+                    <div class="bar @barClass" style="height: @(heightPercent)%">
+                        @if (arraySize <= 25)
+                        {
+                            <span class="bar-value">@val</span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <!-- Легенда цветов -->
+    <div class="legend-panel glass">
+        <div class="legend-item"><span class="legend-color default"></span> Обычный</div>
+        <div class="legend-item"><span class="legend-color comparing"></span> Сравнение</div>
+        <div class="legend-item"><span class="legend-color swapping"></span> Обмен / Запись</div>
+        <div class="legend-item"><span class="legend-color pivot"></span> Опорный (Pivot)</div>
+        <div class="legend-item"><span class="legend-color sorted"></span> Отсортирован</div>
+    </div>
+</div>
+
+@code {
+    private string selectedAlgorithm = "Bubble Sort";
+    private int arraySize = 30;
+    private int delayMs = 50;
+    private int[] initialArray = Array.Empty<int>();
+
+    private List<StepSnapshot> steps = new();
+    private int currentStepIndex = 0;
+    private StepSnapshot currentSnapshot = new();
+
+    private bool isSorting = false;
+    private bool isCompleted = false;
+    private CancellationTokenSource? cts;
+
+    protected override void OnInitialized()
+    {
+        GenerateNewArray();
+    }
+
+    private void GenerateNewArray()
+    {
+        PauseSorting();
+        var rnd = new Random();
+        initialArray = Enumerable.Range(0, arraySize).Select(_ => rnd.Next(10, 100)).ToArray();
+        ResetVisualizer();
+    }
+
+    private void ResetVisualizer()
+    {
+        PauseSorting();
+        steps = SortingVisualizer.GenerateSteps(selectedAlgorithm, initialArray);
+        currentStepIndex = 0;
+        isCompleted = false;
+        if (steps.Count > 0)
+        {
+            currentSnapshot = steps[0];
+        }
+        StateHasChanged();
+    }
+
+    private async Task StartSorting()
+    {
+        if (isCompleted || steps.Count == 0) return;
+
+        isSorting = true;
+        cts = new CancellationTokenSource();
+        var token = cts.Token;
+
+        try
+        {
+            while (currentStepIndex < steps.Count - 1 && !token.IsCancellationRequested)
+            {
+                currentStepIndex++;
+                currentSnapshot = steps[currentStepIndex];
+                StateHasChanged();
+
+                await Task.Delay(delayMs, token);
+            }
+
+            if (currentStepIndex >= steps.Count - 1)
+            {
+                isCompleted = true;
+            }
+        }
+        catch (TaskCanceledException) { }
+        finally
+        {
+            isSorting = false;
+            StateHasChanged();
+        }
+    }
+
+    private void PauseSorting()
+    {
+        if (cts != null && !cts.IsCancellationRequested)
+        {
+            cts.Cancel();
+        }
+        isSorting = false;
+        StateHasChanged();
+    }
+
+    private void StepForward()
+    {
+        if (currentStepIndex < steps.Count - 1)
+        {
+            currentStepIndex++;
+            currentSnapshot = steps[currentStepIndex];
+            if (currentStepIndex == steps.Count - 1) isCompleted = true;
+            StateHasChanged();
+        }
+    }
+
+    private string GetBarClass(int index)
+    {
+        if (currentSnapshot.SortedIndices.Contains(index)) return "bar-sorted";
+        if (index == currentSnapshot.PivotIndex) return "bar-pivot";
+        if (index == currentSnapshot.SwappingIndex1 || index == currentSnapshot.SwappingIndex2) return "bar-swapping";
+        if (index == currentSnapshot.ComparingIndex1 || index == currentSnapshot.ComparingIndex2) return "bar-comparing";
+        return "bar-default";
+    }
+}
