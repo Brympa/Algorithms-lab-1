@@ -1,0 +1,76 @@
+@using AlgorithmLab.Components
+
+<div class="custom-dropdown-container @Class">
+    <button type="button" class="custom-dropdown-trigger @(isOpen ? "active" : "")" @onclick="ToggleDropdown">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="dropdown-icon-wrapper">
+                <SvgIcon Name="@Icon" Size="14" />
+            </span>
+        }
+        <span class="dropdown-label">@Label:</span>
+        <span class="dropdown-selected-text">@SelectedText</span>
+        <SvgIcon Name="chevron-down" Size="12" Class="@($"dropdown-arrow {(isOpen ? "rotated" : "")}")" />
+    </button>
+
+    @if (isOpen)
+    {
+        <div class="dropdown-backdrop" @onclick="CloseDropdown"></div>
+        <div class="dropdown-menu liquid-glass">
+            @foreach (var opt in Options)
+            {
+                bool isSelected = EqualityComparer<string>.Default.Equals(opt.Value, Value);
+                <div class="dropdown-item @(isSelected ? "selected" : "")" @onclick="() => SelectOption(opt.Value)">
+                    <div class="dropdown-item-left">
+                        @if (!string.IsNullOrEmpty(opt.DotClass))
+                        {
+                            <span class="source-dot @opt.DotClass"></span>
+                        }
+                        <span class="dropdown-item-text">@opt.Text</span>
+                    </div>
+                    
+                    <div class="dropdown-item-right">
+                        @if (!string.IsNullOrEmpty(opt.Badge))
+                        {
+                            <span class="dropdown-item-badge">@opt.Badge</span>
+                        }
+                        @if (isSelected)
+                        {
+                            <SvgIcon Name="check" Size="13" Class="dropdown-check-icon" />
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public List<DropdownOption> Options { get; set; } = new();
+    [Parameter] public string Class { get; set; } = "";
+
+    private bool isOpen = false;
+
+    private string SelectedText
+    {
+        get
+        {
+            var match = Options.FirstOrDefault(o => o.Value == Value);
+            return match?.Text ?? (Options.Count > 0 ? Options[0].Text : Value);
+        }
+    }
+
+    private void ToggleDropdown() => isOpen = !isOpen;
+    private void CloseDropdown() => isOpen = false;
+
+    private async Task SelectOption(string val)
+    {
+        Value = val;
+        isOpen = false;
+        await ValueChanged.InvokeAsync(val);
+    }
+}
