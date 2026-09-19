@@ -36,6 +36,9 @@ public class ExperimentEntity
     [MaxLength(64)]
     public string? ConfigHash { get; set; }
 
+    [MaxLength(50)]
+    public string StorageSource { get; set; } = "PostgreSQL 18";
+
     public List<ExperimentPointEntity> Points { get; set; } = new();
 }
 

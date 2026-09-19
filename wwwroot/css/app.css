@@ -621,3 +621,228 @@ button:disabled {
     color: #fca5a5;
     padding: 0 0.4rem;
 }
+
+/* ==========================================================================
+   Sorting Visualizer Bars Styling (Fixed & Enhanced)
+   ========================================================================== */
+.bars-canvas {
+    height: 380px;
+    display: flex;
+    align-items: flex-end;
+    padding: 1.5rem 1rem 0.5rem;
+    gap: 4px;
+    position: relative;
+    background: rgba(8, 12, 20, 0.75);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-subtle);
+    overflow: hidden;
+}
+
+.bar-wrapper {
+    height: 100%;
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+}
+
+.bar {
+    width: 100%;
+    border-radius: 4px 4px 0 0;
+    transition: height 0.05s ease, background 0.15s ease, transform 0.1s ease;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 3px;
+}
+
+.bar-value {
+    font-size: 0.72rem;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: #ffffff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.bar-default {
+    background: linear-gradient(180deg, #38bdf8, #0284c7);
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.bar-comparing {
+    background: linear-gradient(180deg, #fbbf24, #d97706);
+    box-shadow: 0 0 14px rgba(251, 191, 36, 0.75);
+    transform: scaleY(1.02);
+}
+
+.bar-swapping {
+    background: linear-gradient(180deg, #f43f5e, #be123c);
+    box-shadow: 0 0 16px rgba(244, 63, 94, 0.8);
+    transform: scaleY(1.04);
+}
+
+.bar-pivot {
+    background: linear-gradient(180deg, #c084fc, #9333ea);
+    box-shadow: 0 0 14px rgba(192, 132, 252, 0.7);
+}
+
+.bar-sorted {
+    background: linear-gradient(180deg, #34d399, #059669);
+    box-shadow: 0 0 8px rgba(52, 211, 153, 0.45);
+}
+
+/* ==========================================================================
+   Modern Stepper Input Styling (Nicer Number Arrows)
+   ========================================================================== */
+.stepper-box {
+    display: inline-flex;
+    align-items: center;
+    background: var(--bg-input);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    transition: all 0.15s ease;
+}
+
+.stepper-box:focus-within {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3);
+}
+
+.stepper-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 500;
+    padding: 0.35rem 0.55rem;
+    width: 78px;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.stepper-input::-webkit-inner-spin-button,
+.stepper-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.stepper-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.12s ease;
+    padding: 0.35rem 0;
+}
+
+.stepper-btn:hover:not(:disabled) {
+    background: rgba(56, 189, 248, 0.2);
+    color: var(--accent-cyan);
+}
+
+.stepper-btn:active:not(:disabled) {
+    transform: scale(0.92);
+}
+
+/* Hide default browser spinners globally for param-input */
+input[type="number"].param-input {
+    -moz-appearance: textfield;
+}
+input[type="number"].param-input::-webkit-inner-spin-button,
+input[type="number"].param-input::-webkit-outer-spin-button {
+    opacity: 0.8;
+    filter: invert(1) hue-rotate(180deg);
+    cursor: pointer;
+}
+
+/* ==========================================================================
+   History Table: Prominent Checkboxes, Row Highlighting & Source Badges
+   ========================================================================== */
+.table-cockpit tr {
+    transition: all 0.15s ease;
+}
+
+.table-cockpit tr.selected-row td {
+    background: rgba(56, 189, 248, 0.1) !important;
+    color: #ffffff;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.table-cockpit tr.selected-row td:first-child {
+    border-left: 3px solid var(--accent-cyan);
+}
+
+/* Prominent Checkbox for Comparison Table */
+.checkbox-prominent {
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border: 2px solid rgba(56, 189, 248, 0.4);
+    background: rgba(15, 23, 42, 0.95);
+    accent-color: #00f0ff;
+    cursor: pointer;
+    display: block;
+    margin: 0 auto;
+    transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.checkbox-prominent:checked {
+    border-color: #00f0ff;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.6);
+}
+
+.checkbox-prominent:hover {
+    border-color: #00f0ff;
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.7);
+    transform: scale(1.18);
+}
+
+/* Source Badges */
+.source-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    white-space: nowrap;
+}
+
+.source-badge.pg {
+    color: var(--accent-emerald);
+    background: rgba(16, 185, 129, 0.12);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.source-badge.local {
+    color: var(--accent-amber);
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.source-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+}
+
+.source-dot.online {
+    background: var(--accent-emerald);
+    box-shadow: 0 0 6px var(--accent-emerald);
+}
+
+.source-dot.local {
+    background: var(--accent-amber);
+    box-shadow: 0 0 6px var(--accent-amber);
+}

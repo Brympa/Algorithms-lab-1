@@ -46,6 +46,7 @@ public class ExperimentRecord
     public double? RMSE { get; set; }
     public double? RSquared { get; set; }
     public string ConfigHash { get; set; } = string.Empty;
+    public string StorageSource { get; set; } = "Локальный кэш";
     public List<BenchmarkPoint> Points { get; set; } = new();
 }
 

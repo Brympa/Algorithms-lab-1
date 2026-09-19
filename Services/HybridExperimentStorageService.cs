@@ -88,6 +88,7 @@ public class HybridExperimentStorageService : IExperimentStorageService
     public async Task<Guid> SaveExperimentAsync(ExperimentRecord record)
     {
         if (record.Id == Guid.Empty) record.Id = Guid.NewGuid();
+        record.StorageSource = Status == DatabaseStatus.ConnectedPostgreSql ? "PostgreSQL 18" : "Локальный кэш";
 
         // 1. Всегда сохраняем в локальное хранилище для мгновенного доступа
         _localExperiments.RemoveAll(x => x.Id == record.Id);
@@ -126,12 +127,27 @@ public class HybridExperimentStorageService : IExperimentStorageService
                 var list = await _http.GetFromJsonAsync<List<ExperimentRecord>>($"{ApiUrl}/experiments");
                 if (list != null && list.Count > 0)
                 {
+                    foreach (var item in list)
+                    {
+                        if (string.IsNullOrEmpty(item.StorageSource))
+                        {
+                            item.StorageSource = "PostgreSQL 18";
+                        }
+                    }
                     return list;
                 }
             }
             catch
             {
                 // Fallback to local
+            }
+        }
+
+        foreach (var item in _localExperiments)
+        {
+            if (string.IsNullOrEmpty(item.StorageSource))
+            {
+                item.StorageSource = "Локальный кэш";
             }
         }
 

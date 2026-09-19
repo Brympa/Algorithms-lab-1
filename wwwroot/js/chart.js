@@ -249,3 +249,78 @@ window.renderMultiSeriesChart = (canvasId, labels, seriesList, yLabel) => {
         console.warn('[AlgorithmLab] Error rendering multi-series chart:', e);
     }
 };
+
+window.initMultiLiveChart = (canvasId, title, seriesNames, yAxisLabel) => {
+    if (typeof Chart === 'undefined') return;
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    if (activeCharts[canvasId]) {
+        try { activeCharts[canvasId].destroy(); } catch (e) {}
+    }
+
+    const datasets = seriesNames.map((name, idx) => {
+        const color = CURATED_PALETTE[idx % CURATED_PALETTE.length];
+        return {
+            label: name,
+            data: [],
+            borderColor: color.border,
+            backgroundColor: color.bg,
+            borderWidth: 2,
+            tension: 0.1,
+            pointRadius: 2.5
+        };
+    });
+
+    activeCharts[canvasId] = new Chart(ctx, {
+        type: 'line',
+        data: { labels: [], datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+            plugins: {
+                title: { display: !!title, text: title || '', color: '#e2e8f0', font: { family: 'Outfit, sans-serif', size: 14, weight: 600 } },
+                legend: { labels: { color: '#94a3b8', font: { family: 'JetBrains Mono, monospace', size: 12 } } },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    backgroundColor: 'rgba(15, 23, 42, 0.95)',
+                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                    borderWidth: 1,
+                    titleFont: { family: 'Outfit, sans-serif' },
+                    bodyFont: { family: 'JetBrains Mono, monospace' }
+                }
+            },
+            scales: {
+                x: {
+                    title: { display: true, text: 'Степень (n)', color: '#64748b', font: { family: 'Outfit', size: 12 } },
+                    ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono' } },
+                    grid: { color: 'rgba(255, 255, 255, 0.04)' }
+                },
+                y: {
+                    title: { display: true, text: yAxisLabel || 'Количество шагов (умножений)', color: '#64748b', font: { family: 'Outfit', size: 12 } },
+                    ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono' } },
+                    grid: { color: 'rgba(255, 255, 255, 0.04)' }
+                }
+            }
+        }
+    });
+};
+
+window.appendMultiLivePoint = (canvasId, label, values) => {
+    const chart = activeCharts[canvasId];
+    if (!chart || !chart.data || !chart.data.datasets) return;
+
+    try {
+        chart.data.labels.push(label);
+        for (let i = 0; i < values.length && i < chart.data.datasets.length; i++) {
+            chart.data.datasets[i].data.push(values[i]);
+        }
+        chart.update('none');
+    } catch (e) {
+        console.warn('[AlgorithmLab] Error appending multi live point:', e);
+    }
+};

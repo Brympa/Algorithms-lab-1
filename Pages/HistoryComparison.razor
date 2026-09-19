@@ -53,35 +53,53 @@
             <table class="table-cockpit">
                 <thead>
                     <tr>
-                        <th style="width: 40px;"></th>
+                        <th style="width: 50px; text-align: center;">Выбор</th>
                         <th>Алгоритм</th>
+                        <th>Источник</th>
                         <th>Сложность</th>
                         <th>Диапазон N</th>
                         <th>Коэффициент C</th>
                         <th>Ошибка MSE</th>
                         <th>Качество R²</th>
                         <th>Дата и время</th>
-                        <th style="width: 60px;"></th>
+                        <th style="width: 50px; text-align: center;"></th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var exp in history)
                     {
                         bool isChecked = selectedExperimentIds.Contains(exp.Id);
-                        <tr>
-                            <td>
-                                <input type="checkbox" class="checkbox-custom" checked="@isChecked"
+                        bool isPg = exp.StorageSource?.Contains("Postgre") == true;
+                        <tr class="@(isChecked ? "selected-row" : "")" style="cursor: pointer;" @onclick="() => ToggleSelect(exp.Id, !isChecked)">
+                            <td style="text-align: center;" @onclick:stopPropagation="true">
+                                <input type="checkbox" class="checkbox-prominent" checked="@isChecked"
                                        @onchange="(e) => ToggleSelect(exp.Id, e.Value)" />
                             </td>
                             <td style="color: var(--text-primary); font-weight: 600;">@exp.AlgorithmName</td>
+                            <td>
+                                @if (isPg)
+                                {
+                                    <span class="source-badge pg" title="Синхронизировано с базой данных PostgreSQL 18">
+                                        <span class="source-dot online"></span>
+                                        <span>PostgreSQL 18</span>
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="source-badge local" title="Сохранено в локальном хранилище сессии">
+                                        <span class="source-dot local"></span>
+                                        <span>Локальный кэш</span>
+                                    </span>
+                                }
+                            </td>
                             <td><span class="complexity-pill">@exp.ComplexityDisplay</span></td>
                             <td class="mono-cell">@exp.NMin..@exp.NMax (шаг @exp.Step)</td>
                             <td class="mono-cell" style="color: var(--accent-amber);">@(exp.CFactor.HasValue ? $"{exp.CFactor.Value:E3}" : "—")</td>
                             <td class="mono-cell" style="color: var(--accent-emerald);">@(exp.MSE.HasValue ? $"{exp.MSE.Value:E4}" : "—")</td>
                             <td class="mono-cell" style="color: var(--accent-cyan);">@(exp.RSquared.HasValue ? $"{exp.RSquared.Value:F4}" : "—")</td>
                             <td class="mono-cell" style="font-size: 0.75rem;">@exp.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
-                            <td>
-                                <button class="btn-secondary" style="padding: 0.25rem 0.5rem;" @onclick="() => DeleteItem(exp.Id)">
+                            <td style="text-align: center;" @onclick:stopPropagation="true">
+                                <button class="btn-secondary" style="padding: 0.25rem 0.5rem;" @onclick="() => DeleteItem(exp.Id)" title="Удалить эксперимент">
                                     <SvgIcon Name="trash" Size="14" />
                                 </button>
                             </td>

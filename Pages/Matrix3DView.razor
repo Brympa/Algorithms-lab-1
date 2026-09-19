@@ -16,36 +16,36 @@
             Часть II. Операции с матрицами A(n×m) и B(m×n)
         </div>
         <div style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5;">
-            По техническому заданию исследуется обычное классическое умножение матриц \(C = A \times B\) (\(O(n \cdot m \cdot n) = O(n^2 m)\)) и строится <strong>трехмерный график зависимости машинного времени от размерностей n и m</strong>.
+            По техническому заданию исследуется обычное классическое умножение матриц \(C = A \times B\) (\(O(n \cdot m \cdot n) = O(n^2 m)\)) и строится <strong>трехмерный график зависимости машинного времени от размерностей n и m в реальном времени</strong>.
         </div>
     </div>
 
-    <!-- Панель управления сеткой n x m -->
+    <!-- Панель управления сеткой n x m с кастомными степперами -->
     <div class="controls-cockpit liquid-glass">
         <div class="param-group">
             <span class="param-label">n min:</span>
-            <input type="number" class="param-input" @bind="nMin" disabled="@isRunning" />
+            <NumericStepper @bind-Value="nMin" Min="5" Max="100" Step="5" Disabled="@isRunning" Width="60" />
         </div>
         <div class="param-group">
             <span class="param-label">n max:</span>
-            <input type="number" class="param-input" @bind="nMax" disabled="@isRunning" />
+            <NumericStepper @bind-Value="nMax" Min="10" Max="120" Step="10" Disabled="@isRunning" Width="65" />
         </div>
         <div class="param-group">
             <span class="param-label">Шаг n:</span>
-            <input type="number" class="param-input" @bind="stepN" disabled="@isRunning" />
+            <NumericStepper @bind-Value="stepN" Min="5" Max="30" Step="5" Disabled="@isRunning" Width="55" />
         </div>
 
         <div class="param-group">
             <span class="param-label">m min:</span>
-            <input type="number" class="param-input" @bind="mMin" disabled="@isRunning" />
+            <NumericStepper @bind-Value="mMin" Min="5" Max="100" Step="5" Disabled="@isRunning" Width="60" />
         </div>
         <div class="param-group">
             <span class="param-label">m max:</span>
-            <input type="number" class="param-input" @bind="mMax" disabled="@isRunning" />
+            <NumericStepper @bind-Value="mMax" Min="10" Max="120" Step="10" Disabled="@isRunning" Width="65" />
         </div>
         <div class="param-group">
             <span class="param-label">Шаг m:</span>
-            <input type="number" class="param-input" @bind="stepM" disabled="@isRunning" />
+            <NumericStepper @bind-Value="stepM" Min="5" Max="30" Step="5" Disabled="@isRunning" Width="55" />
         </div>
 
         <div class="btn-actions-group">
@@ -77,6 +77,10 @@
                 <span class="metric-label">Затраченное время:</span>
                 <span class="metric-value amber">@currentTimeMs.ToString("F3") мс</span>
             </div>
+            <div class="header-status-badge">
+                <span class="status-dot pulsing"></span>
+                <span>Потоковое 3D построение...</span>
+            </div>
         </div>
     }
 
@@ -84,7 +88,7 @@
     <div class="chart-panel liquid-glass">
         <div class="chart-header">
             <div class="chart-title-box">
-                <h2>Интерактивная 3D-поверхность времени умножения матриц</h2>
+                <h2>Интерактивная 3D-поверхность времени умножения матриц (Live 3D)</h2>
                 <div class="chart-subtitle">
                     Вращайте модель левой кнопкой мыши, масштабируйте колесиком
                 </div>
@@ -110,14 +114,6 @@
     private double currentTimeMs = 0;
     private CancellationTokenSource? cts;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            await RunMatrix3DBenchmark();
-        }
-    }
-
     private async Task RunMatrix3DBenchmark()
     {
         if (isRunning) return;
@@ -138,6 +134,11 @@
 
         try
         {
+            // Отрисовываем начальную поверхность
+            await Plotly3D.RenderSurfaceAsync("plotly3dCanvas", nVals, mVals, zMatrix);
+
+            int lastN = -1;
+
             await BenchmarkEngine.RunMatrix3DAsync(
                 matAlgo,
                 nMin, nMax, stepN,
@@ -155,15 +156,26 @@
                         zMatrix[i][j] = pt.AvgMs;
                     }
 
+                    // Обновляем 3D график в реальном времени после завершения каждой строки n
+                    if (pt.N != lastN || pt.M == mVals.Last())
+                    {
+                        lastN = pt.N;
+                        await Plotly3D.UpdateSurfaceAsync("plotly3dCanvas", nVals, mVals, zMatrix);
+                    }
+
                     await InvokeAsync(StateHasChanged);
                 },
                 cts.Token
             );
 
-            // Отрисовка 3D поверхности в Plotly
-            await Plotly3D.RenderSurfaceAsync("plotly3dCanvas", nVals, mVals, zMatrix);
+            // Финальное обновление
+            await Plotly3D.UpdateSurfaceAsync("plotly3dCanvas", nVals, mVals, zMatrix);
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Matrix3DView] Error: {ex.Message}");
+        }
         finally
         {
             isRunning = false;

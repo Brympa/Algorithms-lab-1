@@ -64,3 +64,37 @@ window.renderPlotly3DSurface = (elementId, nValues, mValues, zMatrix) => {
     const config = { responsive: true, displayModeBar: false };
     Plotly.newPlot(el, data, layout, config);
 };
+
+window.updatePlotly3DSurface = (elementId, nValues, mValues, zMatrix) => {
+    const el = document.getElementById(elementId);
+    if (!el || typeof Plotly === 'undefined') return;
+
+    try {
+        if (el.data && el.data.length > 0) {
+            Plotly.react(el, [{
+                z: zMatrix,
+                x: mValues,
+                y: nValues,
+                type: 'surface',
+                colorscale: [
+                    [0, '#0ea5e9'],
+                    [0.5, '#6366f1'],
+                    [1, '#f43f5e']
+                ],
+                contours: {
+                    z: { show: true, usecolormap: true, highlightcolor: "#ffffff", project: { z: true } }
+                },
+                showscale: true,
+                colorbar: {
+                    title: 'Время (мс)',
+                    titleside: 'right',
+                    tickfont: { family: 'JetBrains Mono', color: '#94a3b8' }
+                }
+            }], el.layout, { responsive: true, displayModeBar: false });
+        } else {
+            window.renderPlotly3DSurface(elementId, nValues, mValues, zMatrix);
+        }
+    } catch (e) {
+        console.warn('[AlgorithmLab] Error updating 3D surface:', e);
+    }
+};

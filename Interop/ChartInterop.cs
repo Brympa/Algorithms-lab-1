@@ -55,6 +55,30 @@ public class ChartInterop
             Console.WriteLine($"[ChartInterop] RenderMultiSeriesAsync: {ex.Message}");
         }
     }
+
+    public async Task InitMultiLiveChartAsync(string canvasId, string title, List<string> seriesNames, string yAxisLabel = "Количество шагов")
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("initMultiLiveChart", canvasId, title, seriesNames, yAxisLabel);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ChartInterop] InitMultiLiveChartAsync: {ex.Message}");
+        }
+    }
+
+    public async Task AppendMultiLivePointAsync(string canvasId, int label, double[] values)
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("appendMultiLivePoint", canvasId, label, values);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ChartInterop] AppendMultiLivePointAsync: {ex.Message}");
+        }
+    }
 }
 
 public class SeriesData

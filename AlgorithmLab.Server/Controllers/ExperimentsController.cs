@@ -57,7 +57,8 @@ public class ExperimentsController : ControllerBase
             MSE = e.MSE,
             RMSE = e.RMSE,
             RSquared = e.RSquared,
-            ConfigHash = e.ConfigHash ?? string.Empty
+            ConfigHash = e.ConfigHash ?? string.Empty,
+            StorageSource = string.IsNullOrEmpty(e.StorageSource) ? "PostgreSQL 18" : e.StorageSource
         }).ToList();
 
         return Ok(records);
@@ -90,6 +91,7 @@ public class ExperimentsController : ControllerBase
             RMSE = e.RMSE,
             RSquared = e.RSquared,
             ConfigHash = e.ConfigHash ?? string.Empty,
+            StorageSource = string.IsNullOrEmpty(e.StorageSource) ? "PostgreSQL 18" : e.StorageSource,
             Points = e.Points.OrderBy(p => p.N).Select(p => new BenchmarkPoint
             {
                 N = p.N,
@@ -132,7 +134,8 @@ public class ExperimentsController : ControllerBase
             MSE = record.MSE,
             RMSE = record.RMSE,
             RSquared = record.RSquared,
-            ConfigHash = record.ConfigHash
+            ConfigHash = record.ConfigHash,
+            StorageSource = string.IsNullOrEmpty(record.StorageSource) ? "PostgreSQL 18" : record.StorageSource
         };
 
         foreach (var p in record.Points)

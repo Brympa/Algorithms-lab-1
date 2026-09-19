@@ -66,19 +66,19 @@
             <div class="controls-cockpit liquid-glass">
                 <div class="param-group">
                     <span class="param-label">N min:</span>
-                    <input type="number" class="param-input" @bind="nMin" disabled="@isRunning" />
+                    <NumericStepper @bind-Value="nMin" Min="1" Max="100000" Step="10" Disabled="@isRunning" Width="72" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">N max:</span>
-                    <input type="number" class="param-input" @bind="nMax" disabled="@isRunning" />
+                    <NumericStepper @bind-Value="nMax" Min="10" Max="200000" Step="50" Disabled="@isRunning" Width="82" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">Шаг:</span>
-                    <input type="number" class="param-input" @bind="step" disabled="@isRunning" />
+                    <NumericStepper @bind-Value="step" Min="1" Max="10000" Step="10" Disabled="@isRunning" Width="68" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">Прогонов:</span>
-                    <input type="number" class="param-input" @bind="runsPerN" min="1" max="20" disabled="@isRunning" />
+                    <NumericStepper @bind-Value="runsPerN" Min="1" Max="20" Step="1" Disabled="@isRunning" Width="55" />
                 </div>
 
                 <div class="param-group" style="gap: 0.4rem;">
@@ -218,7 +218,7 @@
         {
             await Task.Delay(150); // Даем браузеру отрисовать canvas перед обращением к контексту 2D
             await Chart.InitLiveChartAsync("liveChartCanvas", currentAlgorithm.Name);
-            await StartBenchmark();
+            // Алгоритм НЕ запускается автоматически, ожидает нажатия кнопки пользователем
         }
     }
 

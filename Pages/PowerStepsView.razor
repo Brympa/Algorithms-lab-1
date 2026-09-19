@@ -21,19 +21,19 @@
         </div>
     </div>
 
-    <!-- Панель управления -->
+    <!-- Панель управления с современными степперами -->
     <div class="controls-cockpit liquid-glass">
         <div class="param-group">
             <span class="param-label">Основание x:</span>
-            <input type="number" step="0.05" class="param-input" @bind="baseX" disabled="@isRunning" />
+            <input type="number" step="0.05" class="param-input" style="width: 70px;" @bind="baseX" disabled="@isRunning" />
         </div>
         <div class="param-group">
             <span class="param-label">N max:</span>
-            <input type="number" class="param-input" @bind="nMax" min="10" max="2000" disabled="@isRunning" />
+            <NumericStepper @bind-Value="nMax" Min="10" Max="2000" Step="50" Disabled="@isRunning" Width="75" />
         </div>
         <div class="param-group">
             <span class="param-label">Шаг:</span>
-            <input type="number" class="param-input" @bind="step" min="1" max="100" disabled="@isRunning" />
+            <NumericStepper @bind-Value="step" Min="1" Max="100" Step="5" Disabled="@isRunning" Width="65" />
         </div>
 
         <div class="btn-actions-group">
@@ -54,15 +54,22 @@
         </div>
     </div>
 
-    <!-- График количества операций -->
+    <!-- График количества операций в реальном времени -->
     <div class="chart-panel liquid-glass">
         <div class="chart-header">
             <div class="chart-title-box">
-                <h2>Сравнение количества элементарных операций от степени n</h2>
+                <h2>Сравнение количества элементарных операций от степени n (Потоковый режим)</h2>
                 <div class="chart-subtitle">
                     Итеративный O(n) против Рекурсивного O(n) и Быстрого бинарного O(log n)
                 </div>
             </div>
+            @if (isRunning)
+            {
+                <div class="header-status-badge">
+                    <span class="status-dot pulsing"></span>
+                    <span>Расчет n = @currentProgressN...</span>
+                </div>
+            }
         </div>
 
         <div class="chart-canvas-container">
@@ -109,16 +116,25 @@
     private int nMax = 1000;
     private int step = 20;
     private bool isRunning = false;
+    private int currentProgressN = 0;
     private CancellationTokenSource? cts;
 
     private record StepRow(int N, long IterativeSteps, long RecursiveSteps, long FastSteps);
     private List<StepRow> comparisonTable = new();
 
+    private readonly List<string> seriesNames = new()
+    {
+        "10. Простой итеративный (умножения)",
+        "11. Рекурсивный x·xⁿ⁻¹ (вызовы + умножения)",
+        "12. Быстрый бинарный O(log n)"
+    };
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
-            await RunComparisonAsync();
+            await Task.Delay(150);
+            await Chart.InitMultiLiveChartAsync("stepsChartCanvas", "Сравнение шагов возведения в степень", seriesNames, "Количество шагов");
         }
     }
 
@@ -127,6 +143,7 @@
         if (isRunning) return;
         isRunning = true;
         comparisonTable.Clear();
+        currentProgressN = 1;
         cts = new CancellationTokenSource();
         StateHasChanged();
 
@@ -134,13 +151,10 @@
         var recursive = new RecursivePowerAlgorithm();
         var fastBinary = new FastBinaryPowerAlgorithm();
 
-        var labels = new List<int>();
-        var sIter = new List<double>();
-        var sRec = new List<double>();
-        var sFast = new List<double>();
-
         try
         {
+            await Chart.InitMultiLiveChartAsync("stepsChartCanvas", "Сравнение шагов возведения в степень", seriesNames, "Количество шагов");
+
             for (int n = 1; n <= nMax; n += step)
             {
                 cts.Token.ThrowIfCancellationRequested();
@@ -149,29 +163,26 @@
                 var r2 = recursive.ExecuteWithSteps(baseX, n);
                 var r3 = fastBinary.ExecuteWithSteps(baseX, n);
 
-                labels.Add(n);
-                sIter.Add(r1.StepCount);
-                sRec.Add(r2.StepCount);
-                sFast.Add(r3.StepCount);
+                currentProgressN = n;
 
-                if (n % 200 == 0 || n == 1 || n == nMax)
+                // Потоковая отправка трех точек одновременно в реальном времени
+                await Chart.AppendMultiLivePointAsync("stepsChartCanvas", n, new double[] { r1.StepCount, r2.StepCount, r3.StepCount });
+
+                if (n % 100 == 0 || n == 1 || n >= nMax - step)
                 {
                     comparisonTable.Add(new StepRow(n, r1.StepCount, r2.StepCount, r3.StepCount));
+                    await InvokeAsync(StateHasChanged);
                 }
 
-                await Task.Delay(1, cts.Token);
+                // Плавная задержка для красивого живого роста графиков
+                await Task.Delay(15, cts.Token);
             }
-
-            var series = new List<SeriesData>
-            {
-                new() { Name = "10. Простой итеративный (умножения)", Data = sIter },
-                new() { Name = "11. Рекурсивный (вызовы + умножения)", Data = sRec },
-                new() { Name = "12. Быстрый бинарный O(log n)", Data = sFast }
-            };
-
-            await Chart.RenderMultiSeriesAsync("stepsChartCanvas", labels, series, "Количество элементарных шагов");
         }
         catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[PowerStepsView] Error: {ex.Message}");
+        }
         finally
         {
             isRunning = false;

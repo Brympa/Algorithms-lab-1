@@ -19,4 +19,16 @@ public class Plotly3DInterop
             Console.WriteLine($"[Plotly3DInterop] RenderSurfaceAsync: {ex.Message}");
         }
     }
+
+    public async Task UpdateSurfaceAsync(string elementId, List<int> nValues, List<int> mValues, double[][] zMatrix)
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("updatePlotly3DSurface", elementId, nValues, mValues, zMatrix);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Plotly3DInterop] UpdateSurfaceAsync: {ex.Message}");
+        }
+    }
 }
