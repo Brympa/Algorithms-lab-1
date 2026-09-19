@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="AlgorithmLab.Core/AlgorithmLab.Core.csproj" />
+  <Project Path="AlgorithmLab.csproj" />
+  <Project Path="AlgorithmLab.Server/AlgorithmLab.Server.csproj" />
+  <Project Path="AlgorithmLab.Tests/AlgorithmLab.Tests.csproj" />
+</Solution>

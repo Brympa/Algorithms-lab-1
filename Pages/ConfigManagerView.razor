@@ -1,0 +1,235 @@
+@using System.Text.Json
+@using AlgorithmLab.Core.Dataset
+@using AlgorithmLab.Services
+@using AlgorithmLab.Components
+
+@inject IMasterDatasetProvider DatasetProvider
+@inject IExperimentStorageService Storage
+@inject IJSRuntime JS
+
+<div class="benchmark-workspace">
+    <!-- Секция 1: Подключение к PostgreSQL 18 -->
+    <div class="chart-panel liquid-glass">
+        <div class="chart-header">
+            <div class="chart-title-box">
+                <h2>Интеграция с базой данных (PostgreSQL 18)</h2>
+                <div class="chart-subtitle">
+                    Двухрежимная работа: автономный SPA в браузере или синхронизация с PostgreSQL 18 через Web API
+                </div>
+            </div>
+            <div class="header-status-badge">
+                <span class="status-dot @(Storage.Status == DatabaseStatus.ConnectedPostgreSql ? "online" : "local")"></span>
+                <span>@Storage.StatusMessage</span>
+            </div>
+        </div>
+
+        <div class="controls-cockpit" style="margin-top: 0.5rem; background: rgba(10, 15, 29, 0.5);">
+            <div class="param-group" style="flex: 1; max-width: 450px;">
+                <span class="param-label">URL API бэкенда:</span>
+                <input type="text" class="param-input" style="width: 100%;" @bind="apiUrl" />
+            </div>
+
+            <div class="btn-actions-group">
+                <button class="btn-primary" @onclick="CheckDbConnection">
+                    <SvgIcon Name="refresh" Size="16" />
+                    <span>Проверить связь</span>
+                </button>
+            </div>
+        </div>
+
+        <div style="font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin-top: 0.5rem;">
+            Для запуска локального контейнера с <strong>PostgreSQL 18</strong> выполните в корне проекта команду:
+            <code style="font-family: var(--font-mono); color: var(--accent-cyan); background: rgba(0,0,0,0.3); padding: 0.2rem 0.4rem; border-radius: 4px;">
+                docker compose up -d
+            </code>.
+            При отсутствии запущенной БД приложение автоматически работает в автономном режиме с сохранением в локальный кэш браузера.
+        </div>
+    </div>
+
+    <!-- Секция 2: Загрузка и управление тестовыми данными на лету -->
+    <div class="chart-panel liquid-glass">
+        <div class="chart-header">
+            <div class="chart-title-box">
+                <h2>Управление набором данных (Master Dataset)</h2>
+                <div class="chart-subtitle">
+                    Единый эталонный вектор данных для всех алгоритмов и динамическая смена через JSON
+                </div>
+            </div>
+            <div class="btn-actions-group">
+                <button class="btn-secondary" @onclick="ExportConfig">
+                    <SvgIcon Name="download" Size="16" />
+                    <span>Экспорт JSON</span>
+                </button>
+                <button class="btn-secondary" @onclick="LoadSampleConfig">
+                    <SvgIcon Name="refresh" Size="16" />
+                    <span>Сброс на эталонный</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Параметры активного датасета -->
+        <div class="telemetry-cockpit">
+            <div class="telemetry-metric">
+                <span class="metric-label">Сид генератора:</span>
+                <span class="metric-value cyan">@DatasetProvider.Config.Seed</span>
+            </div>
+            <div class="telemetry-metric">
+                <span class="metric-label">Распределение:</span>
+                <span class="metric-value amber">@DatasetProvider.Config.Distribution</span>
+            </div>
+            <div class="telemetry-metric">
+                <span class="metric-label">Размер предгенерации:</span>
+                <span class="metric-value emerald">@DatasetProvider.Config.MaxPrecomputedSize</span>
+            </div>
+            <div class="telemetry-metric">
+                <span class="metric-label">Конфиг хэш:</span>
+                <span class="metric-value mono-cell" style="font-size: 0.78rem;">@DatasetProvider.Config.ComputeHash()</span>
+            </div>
+        </div>
+
+        <!-- Интерактивная загрузка файла JSON -->
+        <div style="margin-top: 1rem; padding: 1.25rem; background: rgba(10, 15, 29, 0.6); border-radius: var(--radius-md); border: 1px dashed var(--border-subtle);">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <div style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.2rem;">
+                        Загрузка конфигурационного JSON-файла на лету:
+                    </div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">
+                        Выберите файл .json с вашей конфигурацией векторов или распределений. Данные в памяти обновятся мгновенно.
+                    </div>
+                </div>
+
+                <div style="position: relative;">
+                    <InputFile OnChange="HandleConfigFileUpload" accept=".json" class="btn-primary" style="opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer;" />
+                    <button class="btn-primary">
+                        <SvgIcon Name="upload" Size="16" />
+                        <span>Выбрать JSON-файл</span>
+                    </button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(statusMessage))
+            {
+                <div style="margin-top: 0.8rem; font-size: 0.82rem; color: @statusColor; font-family: var(--font-mono);">
+                    @statusMessage
+                </div>
+            }
+        </div>
+
+        <!-- Редактор JSON для ручной правки -->
+        <div style="margin-top: 1rem;">
+            <div style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.4rem;">
+                Прямой просмотр и редактирование JSON:
+            </div>
+            <textarea class="param-input" style="width: 100%; height: 160px; resize: vertical;" @bind="jsonEditorText"></textarea>
+            <div style="margin-top: 0.5rem; display: flex; justify-content: flex-end;">
+                <button class="btn-secondary" @onclick="ApplyJsonFromEditor">
+                    <SvgIcon Name="check" Size="16" />
+                    <span>Применить из текстового поля</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string apiUrl = "http://localhost:5000/api";
+    private string statusMessage = "";
+    private string statusColor = "var(--accent-cyan)";
+    private string jsonEditorText = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        apiUrl = Storage.ApiUrl;
+        UpdateJsonEditorText();
+        await Storage.CheckConnectionAsync();
+    }
+
+    private void UpdateJsonEditorText()
+    {
+        var options = new JsonSerializerOptions { WriteIndented = true };
+        jsonEditorText = JsonSerializer.Serialize(DatasetProvider.Config, options);
+    }
+
+    private async Task CheckDbConnection()
+    {
+        Storage.ApiUrl = apiUrl;
+        await Storage.CheckConnectionAsync();
+    }
+
+    private async Task HandleConfigFileUpload(InputFileChangeEventArgs e)
+    {
+        try
+        {
+            var file = e.File;
+            using var stream = file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var reader = new StreamReader(stream);
+            var content = await reader.ReadToEndAsync();
+
+            var config = JsonSerializer.Deserialize<DatasetConfig>(content, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (config != null)
+            {
+                DatasetProvider.UpdateConfig(config);
+                UpdateJsonEditorText();
+                statusMessage = $"Конфигурация успешно загружена из файла '{file.Name}'! Хэш: {config.ComputeHash()}";
+                statusColor = "var(--accent-emerald)";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Ошибка загрузки JSON: {ex.Message}";
+            statusColor = "var(--accent-ruby)";
+        }
+    }
+
+    private void ApplyJsonFromEditor()
+    {
+        try
+        {
+            var config = JsonSerializer.Deserialize<DatasetConfig>(jsonEditorText, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (config != null)
+            {
+                DatasetProvider.UpdateConfig(config);
+                statusMessage = "Конфигурация успешно применена из текстового редактора!";
+                statusColor = "var(--accent-emerald)";
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Ошибка парсинга: {ex.Message}";
+            statusColor = "var(--accent-ruby)";
+        }
+    }
+
+    private void LoadSampleConfig()
+    {
+        var sample = new DatasetConfig
+        {
+            Seed = 42,
+            Distribution = "RandomUniform",
+            MaxPrecomputedSize = 25000,
+            PolynomialX = 1.5,
+            PowerBase = 1.05
+        };
+        DatasetProvider.UpdateConfig(sample);
+        UpdateJsonEditorText();
+        statusMessage = "Сброшено на эталонную конфигурацию.";
+        statusColor = "var(--accent-cyan)";
+    }
+
+    private async Task ExportConfig()
+    {
+        UpdateJsonEditorText();
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", jsonEditorText);
+        statusMessage = "JSON конфигурации скопирован в буфер обмена!";
+        statusColor = "var(--accent-cyan)";
+    }
+}

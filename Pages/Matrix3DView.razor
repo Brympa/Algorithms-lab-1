@@ -1,0 +1,180 @@
+@using AlgorithmLab.Core.Algorithms
+@using AlgorithmLab.Core.Benchmark
+@using AlgorithmLab.Core.Dataset
+@using AlgorithmLab.Core.Models
+@using AlgorithmLab.Interop
+@using AlgorithmLab.Components
+
+@inject IMasterDatasetProvider DatasetProvider
+@inject PrecisionBenchmarkEngine BenchmarkEngine
+@inject Plotly3DInterop Plotly3D
+
+<div class="benchmark-workspace">
+    <!-- Описание Части II ТЗ -->
+    <div class="controls-cockpit liquid-glass" style="flex-direction: column; align-items: flex-start; gap: 0.6rem;">
+        <div style="font-size: 1rem; font-weight: 700; color: var(--accent-cyan);">
+            Часть II. Операции с матрицами A(n×m) и B(m×n)
+        </div>
+        <div style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5;">
+            По техническому заданию исследуется обычное классическое умножение матриц \(C = A \times B\) (\(O(n \cdot m \cdot n) = O(n^2 m)\)) и строится <strong>трехмерный график зависимости машинного времени от размерностей n и m</strong>.
+        </div>
+    </div>
+
+    <!-- Панель управления сеткой n x m -->
+    <div class="controls-cockpit liquid-glass">
+        <div class="param-group">
+            <span class="param-label">n min:</span>
+            <input type="number" class="param-input" @bind="nMin" disabled="@isRunning" />
+        </div>
+        <div class="param-group">
+            <span class="param-label">n max:</span>
+            <input type="number" class="param-input" @bind="nMax" disabled="@isRunning" />
+        </div>
+        <div class="param-group">
+            <span class="param-label">Шаг n:</span>
+            <input type="number" class="param-input" @bind="stepN" disabled="@isRunning" />
+        </div>
+
+        <div class="param-group">
+            <span class="param-label">m min:</span>
+            <input type="number" class="param-input" @bind="mMin" disabled="@isRunning" />
+        </div>
+        <div class="param-group">
+            <span class="param-label">m max:</span>
+            <input type="number" class="param-input" @bind="mMax" disabled="@isRunning" />
+        </div>
+        <div class="param-group">
+            <span class="param-label">Шаг m:</span>
+            <input type="number" class="param-input" @bind="stepM" disabled="@isRunning" />
+        </div>
+
+        <div class="btn-actions-group">
+            @if (!isRunning)
+            {
+                <button class="btn-primary" @onclick="RunMatrix3DBenchmark">
+                    <SvgIcon Name="play" Size="16" />
+                    <span>Построить 3D</span>
+                </button>
+            }
+            else
+            {
+                <button class="btn-danger" @onclick="Stop">
+                    <SvgIcon Name="stop" Size="16" />
+                    <span>Прервать</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (isRunning)
+    {
+        <div class="telemetry-cockpit">
+            <div class="telemetry-metric">
+                <span class="metric-label">Текущая точка сетки:</span>
+                <span class="metric-value cyan">n = @currentN, m = @currentM</span>
+            </div>
+            <div class="telemetry-metric">
+                <span class="metric-label">Затраченное время:</span>
+                <span class="metric-value amber">@currentTimeMs.ToString("F3") мс</span>
+            </div>
+        </div>
+    }
+
+    <!-- 3D Поверхность Plotly.js -->
+    <div class="chart-panel liquid-glass">
+        <div class="chart-header">
+            <div class="chart-title-box">
+                <h2>Интерактивная 3D-поверхность времени умножения матриц</h2>
+                <div class="chart-subtitle">
+                    Вращайте модель левой кнопкой мыши, масштабируйте колесиком
+                </div>
+            </div>
+        </div>
+
+        <div id="plotly3dCanvas" style="width: 100%; height: 520px; min-height: 480px;"></div>
+    </div>
+</div>
+
+@code {
+    private int nMin = 15;
+    private int nMax = 75;
+    private int stepN = 15;
+
+    private int mMin = 15;
+    private int mMax = 75;
+    private int stepM = 15;
+
+    private bool isRunning = false;
+    private int currentN = 0;
+    private int currentM = 0;
+    private double currentTimeMs = 0;
+    private CancellationTokenSource? cts;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await RunMatrix3DBenchmark();
+        }
+    }
+
+    private async Task RunMatrix3DBenchmark()
+    {
+        if (isRunning) return;
+        isRunning = true;
+        cts = new CancellationTokenSource();
+        StateHasChanged();
+
+        var matAlgo = new MatrixMultiplyAlgorithm();
+
+        var nVals = new List<int>();
+        for (int n = nMin; n <= nMax; n += stepN) nVals.Add(n);
+
+        var mVals = new List<int>();
+        for (int m = mMin; m <= mMax; m += stepM) mVals.Add(m);
+
+        double[][] zMatrix = new double[nVals.Count][];
+        for (int i = 0; i < nVals.Count; i++) zMatrix[i] = new double[mVals.Count];
+
+        try
+        {
+            await BenchmarkEngine.RunMatrix3DAsync(
+                matAlgo,
+                nMin, nMax, stepN,
+                mMin, mMax, stepM,
+                async pt =>
+                {
+                    currentN = pt.N;
+                    currentM = pt.M;
+                    currentTimeMs = pt.AvgMs;
+
+                    int i = nVals.IndexOf(pt.N);
+                    int j = mVals.IndexOf(pt.M);
+                    if (i >= 0 && j >= 0)
+                    {
+                        zMatrix[i][j] = pt.AvgMs;
+                    }
+
+                    await InvokeAsync(StateHasChanged);
+                },
+                cts.Token
+            );
+
+            // Отрисовка 3D поверхности в Plotly
+            await Plotly3D.RenderSurfaceAsync("plotly3dCanvas", nVals, mVals, zMatrix);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void Stop()
+    {
+        cts?.Cancel();
+        isRunning = false;
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,192 @@
+@using AlgorithmLab.Core.Models
+@using AlgorithmLab.Interop
+@using AlgorithmLab.Services
+@using AlgorithmLab.Components
+
+@inject IExperimentStorageService Storage
+@inject ChartInterop Chart
+
+<div class="benchmark-workspace">
+    <div class="chart-panel liquid-glass">
+        <div class="chart-header">
+            <div class="chart-title-box">
+                <h2>Сравнение алгоритмов из истории (Мультисерийный анализ)</h2>
+                <div class="chart-subtitle">
+                    Выберите несколько экспериментов из списка ниже для наложения их кривых на единый график
+                </div>
+            </div>
+            <div class="btn-actions-group">
+                <button class="btn-secondary" @onclick="LoadHistoryAsync">
+                    <SvgIcon Name="refresh" Size="16" />
+                    <span>Обновить список</span>
+                </button>
+                <button class="btn-primary" @onclick="PlotSelectedAsync" disabled="@(selectedExperimentIds.Count == 0)">
+                    <SvgIcon Name="compare" Size="16" />
+                    <span>Сравнить выбранные (@selectedExperimentIds.Count)</span>
+                </button>
+            </div>
+        </div>
+
+        <div class="chart-canvas-container">
+            <canvas id="multiCompareCanvas"></canvas>
+        </div>
+    </div>
+
+    <!-- Таблица истории экспериментов -->
+    <div class="chart-panel liquid-glass">
+        <div class="chart-header">
+            <h3 style="font-size: 1rem; font-weight: 600;">Журнал экспериментов (PostgreSQL 18 / Локальное хранилище)</h3>
+            @if (selectedExperimentIds.Count > 0)
+            {
+                <span class="brand-badge">Выбрано для сравнения: @selectedExperimentIds.Count</span>
+            }
+        </div>
+
+        @if (history.Count == 0)
+        {
+            <div style="padding: 2rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">
+                История пуста. Проведите замеры во вкладке «Бенчмарк сложности», и результаты автоматически появятся здесь.
+            </div>
+        }
+        else
+        {
+            <table class="table-cockpit">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"></th>
+                        <th>Алгоритм</th>
+                        <th>Сложность</th>
+                        <th>Диапазон N</th>
+                        <th>Коэффициент C</th>
+                        <th>Ошибка MSE</th>
+                        <th>Качество R²</th>
+                        <th>Дата и время</th>
+                        <th style="width: 60px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var exp in history)
+                    {
+                        bool isChecked = selectedExperimentIds.Contains(exp.Id);
+                        <tr>
+                            <td>
+                                <input type="checkbox" class="checkbox-custom" checked="@isChecked"
+                                       @onchange="(e) => ToggleSelect(exp.Id, e.Value)" />
+                            </td>
+                            <td style="color: var(--text-primary); font-weight: 600;">@exp.AlgorithmName</td>
+                            <td><span class="complexity-pill">@exp.ComplexityDisplay</span></td>
+                            <td class="mono-cell">@exp.NMin..@exp.NMax (шаг @exp.Step)</td>
+                            <td class="mono-cell" style="color: var(--accent-amber);">@(exp.CFactor.HasValue ? $"{exp.CFactor.Value:E3}" : "—")</td>
+                            <td class="mono-cell" style="color: var(--accent-emerald);">@(exp.MSE.HasValue ? $"{exp.MSE.Value:E4}" : "—")</td>
+                            <td class="mono-cell" style="color: var(--accent-cyan);">@(exp.RSquared.HasValue ? $"{exp.RSquared.Value:F4}" : "—")</td>
+                            <td class="mono-cell" style="font-size: 0.75rem;">@exp.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                            <td>
+                                <button class="btn-secondary" style="padding: 0.25rem 0.5rem;" @onclick="() => DeleteItem(exp.Id)">
+                                    <SvgIcon Name="trash" Size="14" />
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ExperimentRecord> history = new();
+    private HashSet<Guid> selectedExperimentIds = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadHistoryAsync();
+    }
+
+    private async Task LoadHistoryAsync()
+    {
+        history = await Storage.GetHistoryAsync();
+
+        // По умолчанию выбираем первые 2-3 эксперимента для наглядности
+        if (selectedExperimentIds.Count == 0 && history.Count >= 2)
+        {
+            selectedExperimentIds.Add(history[0].Id);
+            selectedExperimentIds.Add(history[1].Id);
+        }
+
+        StateHasChanged();
+        if (selectedExperimentIds.Count > 0)
+        {
+            await Task.Delay(50);
+            await PlotSelectedAsync();
+        }
+    }
+
+    private void ToggleSelect(Guid id, object? isChecked)
+    {
+        if (isChecked is bool b && b)
+        {
+            selectedExperimentIds.Add(id);
+        }
+        else
+        {
+            selectedExperimentIds.Remove(id);
+        }
+    }
+
+    private async Task PlotSelectedAsync()
+    {
+        if (selectedExperimentIds.Count == 0) return;
+
+        var fullRecords = new List<ExperimentRecord>();
+        foreach (var id in selectedExperimentIds)
+        {
+            var exp = await Storage.GetExperimentByIdAsync(id);
+            if (exp != null && exp.Points.Count > 0)
+            {
+                fullRecords.Add(exp);
+            }
+        }
+
+        if (fullRecords.Count == 0) return;
+
+        // Формируем общий набор меток N
+        var commonLabels = fullRecords
+            .SelectMany(r => r.Points.Select(p => p.N))
+            .Distinct()
+            .OrderBy(n => n)
+            .ToList();
+
+        var seriesList = new List<SeriesData>();
+        foreach (var rec in fullRecords)
+        {
+            var pointMap = rec.Points.ToDictionary(p => p.N, p => p.AvgMs);
+            var dataList = new List<double>();
+            foreach (var n in commonLabels)
+            {
+                if (pointMap.TryGetValue(n, out var val))
+                {
+                    dataList.Add(val);
+                }
+                else
+                {
+                    dataList.Add(0.0);
+                }
+            }
+
+            seriesList.Add(new SeriesData
+            {
+                Name = $"{rec.AlgorithmName} [{rec.ComplexityDisplay}]",
+                Data = dataList
+            });
+        }
+
+        await Chart.RenderMultiSeriesAsync("multiCompareCanvas", commonLabels, seriesList);
+    }
+
+    private async Task DeleteItem(Guid id)
+    {
+        selectedExperimentIds.Remove(id);
+        await Storage.DeleteExperimentAsync(id);
+        await LoadHistoryAsync();
+    }
+}

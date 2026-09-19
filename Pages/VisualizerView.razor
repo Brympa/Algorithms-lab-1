@@ -1,10 +1,11 @@
 @using AlgorithmLab.Visualizer
+@using AlgorithmLab.Components
 
-<div class="visualizer-container">
-    <div class="visualizer-header glass">
-        <div class="control-group">
-            <label class="control-label">Алгоритм:</label>
-            <select class="glass-select" @bind="selectedAlgorithm" disabled="@isSorting">
+<div class="benchmark-workspace">
+    <div class="controls-cockpit liquid-glass">
+        <div class="param-group">
+            <span class="param-label">Алгоритм:</span>
+            <select class="param-input" style="width: 170px;" @bind="selectedAlgorithm" disabled="@isSorting">
                 <option value="Bubble Sort">Bubble Sort (Пузырьком)</option>
                 <option value="Selection Sort">Selection Sort (Выбором)</option>
                 <option value="Insertion Sort">Insertion Sort (Вставками)</option>
@@ -13,88 +14,103 @@
             </select>
         </div>
 
-        <div class="control-group">
-            <label class="control-label">Размер (N): @arraySize</label>
-            <input type="range" class="glass-range" min="10" max="60" @bind="arraySize" @bind:event="oninput" @onchange="GenerateNewArray" disabled="@isSorting" />
+        <div class="param-group">
+            <span class="param-label">Размер (N): @arraySize</span>
+            <input type="range" class="checkbox-custom" min="10" max="60" @bind="arraySize" @bind:event="oninput" @onchange="GenerateNewArray" disabled="@isSorting" />
         </div>
 
-        <div class="control-group">
-            <label class="control-label">Скорость: @delayMs мс</label>
-            <input type="range" class="glass-range" min="5" max="300" step="5" @bind="delayMs" @bind:event="oninput" disabled="@isSorting" />
+        <div class="param-group">
+            <span class="param-label">Задержка: @delayMs мс</span>
+            <input type="range" class="checkbox-custom" min="5" max="250" step="5" @bind="delayMs" @bind:event="oninput" disabled="@isSorting" />
         </div>
 
-        <div class="btn-group">
-            <button class="glass-btn primary" @onclick="GenerateNewArray" disabled="@isSorting">🎲 Новый массив</button>
+        <div class="btn-actions-group">
+            <button class="btn-secondary" @onclick="GenerateNewArray" disabled="@isSorting">
+                <SvgIcon Name="refresh" Size="15" />
+                <span>Массив</span>
+            </button>
             @if (!isSorting)
             {
-                <button class="glass-btn success" @onclick="StartSorting" disabled="@isCompleted">▶ Старт</button>
+                <button class="btn-primary" @onclick="StartSorting" disabled="@isCompleted">
+                    <SvgIcon Name="play" Size="15" />
+                    <span>Старт</span>
+                </button>
             }
             else
             {
-                <button class="glass-btn danger" @onclick="PauseSorting">⏸ Пауза</button>
+                <button class="btn-danger" @onclick="PauseSorting">
+                    <SvgIcon Name="stop" Size="15" />
+                    <span>Пауза</span>
+                </button>
             }
-            <button class="glass-btn secondary" @onclick="StepForward" disabled="@(isSorting || isCompleted || steps.Count == 0)">⏭ Шаг</button>
-            <button class="glass-btn warning" @onclick="ResetVisualizer" disabled="@isSorting">🔄 Сброс</button>
+            <button class="btn-secondary" @onclick="StepForward" disabled="@(isSorting || isCompleted || steps.Count == 0)">
+                <span>Шаг ❯</span>
+            </button>
+            <button class="btn-secondary" @onclick="ResetVisualizer" disabled="@isSorting">
+                <span>Сброс</span>
+            </button>
         </div>
     </div>
 
-    <!-- Информационная панель статистики -->
-    <div class="stats-panel glass">
-        <div class="stat-card">
-            <span class="stat-title">Сравнений:</span>
-            <span class="stat-value text-yellow">@currentSnapshot.Comparisons</span>
+    <!-- Информационная панель статистики (Cockpit Density) -->
+    <div class="telemetry-cockpit">
+        <div class="telemetry-metric">
+            <span class="metric-label">Сравнений:</span>
+            <span class="metric-value amber">@currentSnapshot.Comparisons</span>
         </div>
-        <div class="stat-card">
-            <span class="stat-title">Перестановок:</span>
-            <span class="stat-value text-red">@currentSnapshot.Swaps</span>
+        <div class="telemetry-metric">
+            <span class="metric-label">Перестановок:</span>
+            <span class="metric-value ruby">@currentSnapshot.Swaps</span>
         </div>
-        <div class="stat-card">
-            <span class="stat-title">Прогресс шагов:</span>
-            <span class="stat-value text-blue">@(currentStepIndex + 1) / @steps.Count</span>
+        <div class="telemetry-metric">
+            <span class="metric-label">Прогресс шагов:</span>
+            <span class="metric-value cyan">@(currentStepIndex + 1) / @steps.Count</span>
         </div>
-        <div class="stat-card status-card">
-            <span class="stat-title">Статус:</span>
-            <span class="stat-value text-green">@currentSnapshot.Message</span>
+        <div class="telemetry-metric" style="flex: 1; justify-content: flex-end;">
+            <span class="metric-label">Статус:</span>
+            <span class="metric-value emerald">@currentSnapshot.Message</span>
         </div>
     </div>
 
     <!-- Графическая область со столбиками -->
-    <div class="bars-canvas glass">
-        @if (currentSnapshot.Array.Length > 0)
-        {
-            int maxVal = currentSnapshot.Array.Max();
-            @for (int i = 0; i < currentSnapshot.Array.Length; i++)
+    <div class="chart-panel liquid-glass" style="padding: 1rem;">
+        <div class="bars-canvas" style="height: 380px; background: rgba(8, 12, 20, 0.7); border-radius: 8px;">
+            @if (currentSnapshot.Array.Length > 0)
             {
-                int val = currentSnapshot.Array[i];
-                double heightPercent = Math.Max(12, ((double)val / maxVal) * 92);
-                string barClass = GetBarClass(i);
+                int maxVal = currentSnapshot.Array.Max();
+                @for (int i = 0; i < currentSnapshot.Array.Length; i++)
+                {
+                    int val = currentSnapshot.Array[i];
+                    double heightPercent = Math.Max(12, ((double)val / maxVal) * 92);
+                    string barClass = GetBarClass(i);
 
-                <div class="bar-wrapper" style="width: @(100.0 / currentSnapshot.Array.Length)%">
-                    <div class="bar @barClass" style="height: @(heightPercent)%">
-                        @if (arraySize <= 25)
-                        {
-                            <span class="bar-value">@val</span>
-                        }
+                    <div class="bar-wrapper" style="width: @(100.0 / currentSnapshot.Array.Length)%">
+                        <div class="bar @barClass" style="height: @(heightPercent)%">
+                            @if (arraySize <= 25)
+                            {
+                                <span class="bar-value" style="font-family: var(--font-mono);">@val</span>
+                            }
+                        </div>
                     </div>
-                </div>
+                }
             }
-        }
-    </div>
+        </div>
 
-    <!-- Легенда цветов -->
-    <div class="legend-panel glass">
-        <div class="legend-item"><span class="legend-color default"></span> Обычный</div>
-        <div class="legend-item"><span class="legend-color comparing"></span> Сравнение</div>
-        <div class="legend-item"><span class="legend-color swapping"></span> Обмен / Запись</div>
-        <div class="legend-item"><span class="legend-color pivot"></span> Опорный (Pivot)</div>
-        <div class="legend-item"><span class="legend-color sorted"></span> Отсортирован</div>
+        <!-- Легенда цветов без эмодзи -->
+        <div class="chart-legend-row" style="margin-top: 0.8rem;">
+            <div class="legend-badge"><span class="legend-indicator" style="background: #38bdf8;"></span> Исходный</div>
+            <div class="legend-badge"><span class="legend-indicator" style="background: #fbbf24;"></span> Сравнение</div>
+            <div class="legend-badge"><span class="legend-indicator" style="background: #f43f5e;"></span> Перестановка</div>
+            <div class="legend-badge"><span class="legend-indicator" style="background: #c084fc;"></span> Опорный (Pivot)</div>
+            <div class="legend-badge"><span class="legend-indicator" style="background: #34d399;"></span> Отсортирован</div>
+        </div>
     </div>
 </div>
 
 @code {
     private string selectedAlgorithm = "Bubble Sort";
     private int arraySize = 30;
-    private int delayMs = 50;
+    private int delayMs = 40;
     private int[] initialArray = Array.Empty<int>();
 
     private List<StepSnapshot> steps = new();

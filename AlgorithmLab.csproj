@@ -16,4 +16,17 @@
     <PackageReference Include="Microsoft.JSInterop" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="AlgorithmLab.Core\AlgorithmLab.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="AlgorithmLab.Core\**" />
+    <Compile Remove="AlgorithmLab.Server\**" />
+    <Compile Remove="AlgorithmLab.Tests\**" />
+    <Content Remove="AlgorithmLab.Core\**" />
+    <Content Remove="AlgorithmLab.Server\**" />
+    <Content Remove="AlgorithmLab.Tests\**" />
+  </ItemGroup>
+
 </Project>

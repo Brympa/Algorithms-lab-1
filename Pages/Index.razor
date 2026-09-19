@@ -1,152 +1,99 @@
 @page "/"
-@using AlgorithmLab.Benchmark
-@using AlgorithmLab.Interop
-@inject ChartInterop Chart
+@using AlgorithmLab.Services
+@using AlgorithmLab.Components
 
-<div class="spa-shell">
-    <!-- Верхняя навигационная панель SPA -->
-    <header class="spa-header glass">
-        <div class="brand">
-            <span class="brand-icon">⚡</span>
-            <span class="brand-name">AlgorithmLab</span>
+@inject IExperimentStorageService Storage
+
+<div class="app-container">
+    <!-- Шапка SPA с фирменным стилем Liquid Glass -->
+    <header class="app-header liquid-glass">
+        <div class="brand-section">
+            <SvgIcon Name="chart" Class="brand-logo-icon" Size="26" />
+            <span class="brand-title">AlgorithmLab</span>
+            <span class="brand-badge">.NET 10 WASM</span>
         </div>
-        <nav class="spa-nav">
-            <button class="nav-tab @(activeTab == "benchmark" ? "active" : "")" @onclick='() => SetTab("benchmark")'>
-                📈 Бенчмарк сложности (Лабораторная №1)
-            </button>
-            <button class="nav-tab @(activeTab == "visualizer" ? "active" : "")" @onclick='() => SetTab("visualizer")'>
-                📊 Пошаговый визуализатор
-            </button>
-        </nav>
+
+        <!-- Живой индикатор подключения к БД -->
+        <div class="header-status-badge">
+            <span class="status-dot @(Storage.Status == DatabaseStatus.ConnectedPostgreSql ? "online" : "local")"></span>
+            <span>@Storage.StatusMessage</span>
+        </div>
     </header>
 
-    <!-- Основной контент активной вкладки -->
-    <main class="spa-body">
-        @if (activeTab == "visualizer")
+    <!-- Навигационные вкладки без эмодзи по design-taste-frontend -->
+    <nav class="tabs-navigation">
+        <button class="tab-btn @(activeTab == "benchmark" ? "active" : "")" @onclick='() => SetTab("benchmark")'>
+            <SvgIcon Name="chart" Size="16" />
+            <span>Бенчмарк сложности</span>
+        </button>
+
+        <button class="tab-btn @(activeTab == "powersteps" ? "active" : "")" @onclick='() => SetTab("powersteps")'>
+            <SvgIcon Name="steps" Size="16" />
+            <span>Анализ шагов xⁿ (Часть IV)</span>
+        </button>
+
+        <button class="tab-btn @(activeTab == "matrix3d" ? "active" : "")" @onclick='() => SetTab("matrix3d")'>
+            <SvgIcon Name="matrix" Size="16" />
+            <span>3D Матрицы n×m (Часть II)</span>
+        </button>
+
+        <button class="tab-btn @(activeTab == "history" ? "active" : "")" @onclick='() => SetTab("history")'>
+            <SvgIcon Name="compare" Size="16" />
+            <span>Сравнение из истории</span>
+        </button>
+
+        <button class="tab-btn @(activeTab == "visualizer" ? "active" : "")" @onclick='() => SetTab("visualizer")'>
+            <SvgIcon Name="visualizer" Size="16" />
+            <span>Визуализатор сортировок</span>
+        </button>
+
+        <button class="tab-btn @(activeTab == "config" ? "active" : "")" @onclick='() => SetTab("config")'>
+            <SvgIcon Name="database" Size="16" />
+            <span>Конфигурация и БД</span>
+        </button>
+    </nav>
+
+    <!-- Основной контент выбранной вкладки -->
+    <main>
+        @switch (activeTab)
         {
-            <VisualizerView />
-        }
-        else
-        {
-            <div class="benchmark-container">
-                <div class="benchmark-layout">
-                    <!-- Левая панель: выбор алгоритмов по Лабораторной №1 -->
-                    <aside class="glass benchmark-sidebar">
-                        <h3>1. Векторные функции</h3>
-                        @foreach (var key in Algorithms.VectorFunctions.Keys)
-                        {
-                            <button class="glass-btn @(currentAlgo == key ? "active-algo" : "")" @onclick="() => RunBenchmark(key)">
-                                @key
-                            </button>
-                        }
-
-                        <h3>2. Сортировки</h3>
-                        @foreach (var key in Algorithms.Sorts.Keys)
-                        {
-                            <button class="glass-btn @(currentAlgo == key ? "active-algo" : "")" @onclick="() => RunBenchmark(key)">
-                                @key
-                            </button>
-                        }
-
-                        <h3>3. Возведение в степень</h3>
-                        @foreach (var key in Algorithms.PowAlgorithms.Keys)
-                        {
-                            <button class="glass-btn @(currentAlgo == key ? "active-algo" : "")" @onclick="() => RunBenchmark(key)">
-                                @key
-                            </button>
-                        }
-
-                        <h3>4. Матрицы</h3>
-                        @foreach (var key in Algorithms.MatrixAlgorithms.Keys)
-                        {
-                            <button class="glass-btn @(currentAlgo == key ? "active-algo" : "")" @onclick="() => RunBenchmark(key)">
-                                @key
-                            </button>
-                        }
-                    </aside>
-
-                    <!-- Правая панель: График Chart.js -->
-                    <main class="glass benchmark-chart-panel">
-                        <div class="chart-header">
-                            <h2>Анализ временной сложности: @(string.IsNullOrEmpty(currentAlgo) ? "Выберите алгоритм из списка слева" : currentAlgo)</h2>
-                            @if (isRunning)
-                            {
-                                <div class="benchmark-status text-blue">
-                                    <span>⏳</span> Тестирование N = @progress...
-                                </div>
-                            }
-                        </div>
-                        <div class="canvas-wrapper">
-                            <canvas id="chart" width="800" height="420"></canvas>
-                        </div>
-                    </main>
-                </div>
-            </div>
+            case "benchmark":
+                <BenchmarkView />
+                break;
+            case "powersteps":
+                <PowerStepsView />
+                break;
+            case "matrix3d":
+                <Matrix3DView />
+                break;
+            case "history":
+                <HistoryComparison />
+                break;
+            case "visualizer":
+                <VisualizerView />
+                break;
+            case "config":
+                <ConfigManagerView />
+                break;
+            default:
+                <BenchmarkView />
+                break;
         }
     </main>
 </div>
 
 @code {
     private string activeTab = "benchmark";
-    private string currentAlgo = "";
-    private bool isRunning = false;
-    private int progress = 0;
 
-    private List<int> lastLabels = new();
-    private List<double> lastEmpData = new();
-    private List<double> lastTheoData = new();
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnInitializedAsync()
     {
-        if (firstRender && activeTab == "benchmark" && string.IsNullOrEmpty(currentAlgo))
-        {
-            // Запуск по умолчанию первого алгоритма из ТЗ
-            await RunBenchmark("Сумма элементов (Sum)");
-        }
+        Storage.OnStatusChanged += () => InvokeAsync(StateHasChanged);
+        await Storage.CheckConnectionAsync();
     }
 
-    private async Task SetTab(string tab)
+    private void SetTab(string tab)
     {
         activeTab = tab;
         StateHasChanged();
-        if (activeTab == "benchmark" && !string.IsNullOrEmpty(currentAlgo))
-        {
-            await Task.Delay(50);
-            await ReRenderChart();
-        }
-    }
-
-    private async Task RunBenchmark(string key)
-    {
-        if (isRunning) return;
-
-        isRunning = true;
-        currentAlgo = key;
-        progress = 0;
-        StateHasChanged();
-
-        await Task.Delay(20);
-
-        var results = await Task.Run(() =>
-        {
-            return Runner.Run(key, n => { progress = n; InvokeAsync(StateHasChanged); });
-        });
-
-        lastLabels = results.Select(r => r.N).ToList();
-        lastEmpData = results.Select(r => r.AvgMs).ToList();
-        lastTheoData = results.Select(r => r.TheoMs).ToList();
-
-        await ReRenderChart();
-
-        isRunning = false;
-        StateHasChanged();
-    }
-
-    private async Task ReRenderChart()
-    {
-        if (lastLabels.Count > 0)
-        {
-            await Chart.RenderAsync("chart", lastLabels, lastEmpData, lastTheoData);
-        }
     }
 }

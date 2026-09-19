@@ -1,0 +1,367 @@
+@using AlgorithmLab.Core.Algorithms
+@using AlgorithmLab.Core.Benchmark
+@using AlgorithmLab.Core.Dataset
+@using AlgorithmLab.Core.Models
+@using AlgorithmLab.Interop
+@using AlgorithmLab.Services
+@using AlgorithmLab.Components
+
+@inject IAlgorithmRegistry Registry
+@inject IMasterDatasetProvider DatasetProvider
+@inject PrecisionBenchmarkEngine BenchmarkEngine
+@inject ChartInterop Chart
+@inject IExperimentStorageService Storage
+
+<div class="benchmark-grid">
+    <!-- Левая панель: выбор исследуемого алгоритма -->
+    <aside class="algo-sidebar liquid-glass">
+        <div>
+            <div class="sidebar-category-title">1. Операции с векторами</div>
+            <div class="algo-button-list">
+                @foreach (var algo in Registry.GetByCategory(AlgorithmCategory.Vectors))
+                {
+                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "")"
+                            @onclick="() => SelectAlgorithm(algo)" disabled="@isRunning">
+                        <span>@algo.Name</span>
+                        <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div>
+            <div class="sidebar-category-title">2. Сортировки массивов</div>
+            <div class="algo-button-list">
+                @foreach (var algo in Registry.GetByCategory(AlgorithmCategory.Sorts))
+                {
+                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "")"
+                            @onclick="() => SelectAlgorithm(algo)" disabled="@isRunning">
+                        <span>@algo.Name</span>
+                        <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div>
+            <div class="sidebar-category-title">3. Индивидуальное задание (Часть III)</div>
+            <div class="algo-button-list">
+                @foreach (var algo in Registry.GetByCategory(AlgorithmCategory.Individual))
+                {
+                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "")"
+                            @onclick="() => SelectAlgorithm(algo)" disabled="@isRunning">
+                        <span>@algo.Name</span>
+                        <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                    </button>
+                }
+            </div>
+        </div>
+    </aside>
+
+    <!-- Правая область: Панель приборов и Live-график -->
+    <main class="benchmark-workspace">
+        @if (currentAlgorithm != null)
+        {
+            <!-- Панель управления параметрами (Cockpit Density) -->
+            <div class="controls-cockpit liquid-glass">
+                <div class="param-group">
+                    <span class="param-label">N min:</span>
+                    <input type="number" class="param-input" @bind="nMin" disabled="@isRunning" />
+                </div>
+                <div class="param-group">
+                    <span class="param-label">N max:</span>
+                    <input type="number" class="param-input" @bind="nMax" disabled="@isRunning" />
+                </div>
+                <div class="param-group">
+                    <span class="param-label">Шаг:</span>
+                    <input type="number" class="param-input" @bind="step" disabled="@isRunning" />
+                </div>
+                <div class="param-group">
+                    <span class="param-label">Прогонов:</span>
+                    <input type="number" class="param-input" @bind="runsPerN" min="1" max="20" disabled="@isRunning" />
+                </div>
+
+                <div class="param-group" style="gap: 0.4rem;">
+                    <input type="checkbox" id="forceRecalc" class="checkbox-custom" @bind="forceRecalculate" disabled="@isRunning" />
+                    <label for="forceRecalc" class="param-label" style="cursor: pointer;">Принудительный пересчет</label>
+                </div>
+
+                <div class="btn-actions-group">
+                    @if (!isRunning)
+                    {
+                        <button class="btn-primary" @onclick="StartBenchmark">
+                            <SvgIcon Name="play" Size="16" />
+                            <span>Запуск</span>
+                        </button>
+                    }
+                    else
+                    {
+                        <button class="btn-danger" @onclick="StopBenchmark">
+                            <SvgIcon Name="stop" Size="16" />
+                            <span>Прервать</span>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <!-- Телеметрия и индикаторы качества аппроксимации -->
+            <div class="telemetry-cockpit">
+                <div class="telemetry-metric">
+                    <span class="metric-label">Размер N:</span>
+                    <span class="metric-value cyan">@(isRunning ? $"{currentProgressN} / {nMax}" : $"{currentProgressN}")</span>
+                </div>
+                <div class="telemetry-metric">
+                    <span class="metric-label">Выбросы:</span>
+                    <span class="metric-value ruby">@outliersCount</span>
+                </div>
+                <div class="telemetry-metric">
+                    <span class="metric-label">Коэффициент C:</span>
+                    <span class="metric-value amber">@(lastResult?.CFactor.HasValue == true ? $"{lastResult.CFactor.Value:E3}" : "—")</span>
+                </div>
+                <div class="telemetry-metric">
+                    <span class="metric-label">MSE ошибки:</span>
+                    <span class="metric-value emerald">@(lastResult?.MSE.HasValue == true ? $"{lastResult.MSE.Value:E4}" : "—")</span>
+                </div>
+                <div class="telemetry-metric">
+                    <span class="metric-label">R² качество:</span>
+                    <span class="metric-value cyan">@(lastResult?.RSquared.HasValue == true ? $"{lastResult.RSquared.Value:F4}" : "—")</span>
+                </div>
+            </div>
+
+            <!-- Прогресс выполнения -->
+            @if (isRunning)
+            {
+                <div class="live-progress-track">
+                    <div class="live-progress-fill" style="width: @(CalculateProgressPercent())%;"></div>
+                </div>
+            }
+
+            <!-- Панель интерактивного графика -->
+            <div class="chart-panel liquid-glass">
+                <div class="chart-header">
+                    <div class="chart-title-box">
+                        <h2>@currentAlgorithm.Name</h2>
+                        <div class="chart-subtitle">
+                            Теоретическая сложность: <span class="complexity-pill">@currentAlgorithm.ComplexityDisplay</span>
+                            | Данные: Master Dataset (@DatasetProvider.Config.Distribution)
+                            @if (isFromCache)
+                            {
+                                <span class="brand-badge" style="margin-left: 0.5rem;">Кэш БД</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-canvas-container">
+                    <canvas id="liveChartCanvas"></canvas>
+                </div>
+
+                <div class="chart-legend-row">
+                    <div class="legend-badge">
+                        <span class="legend-indicator empirical"></span>
+                        <span>Экспериментальные замеры (среднее по @runsPerN запускам)</span>
+                    </div>
+                    <div class="legend-badge">
+                        <span class="legend-indicator theoretical"></span>
+                        <span>Аппроксимация МНК: T(n) = C · g(n)</span>
+                    </div>
+                    <div class="legend-badge">
+                        <span class="legend-indicator outlier"></span>
+                        <span>Выброс (системная задержка / GC pause)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Описание алгоритма и практическое применение для отчета по ГОСТ -->
+            <div class="telemetry-cockpit" style="flex-direction: column; align-items: flex-start; gap: 0.5rem;">
+                <div style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">
+                    Описание и назначение (по ТЗ):
+                </div>
+                <div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4;">
+                    @currentAlgorithm.Description
+                </div>
+                <div style="font-size: 0.78rem; color: var(--accent-cyan); margin-top: 0.2rem;">
+                    <strong>Практическое применение:</strong> @currentAlgorithm.PracticalApplication
+                </div>
+            </div>
+        }
+    </main>
+</div>
+
+@code {
+    private IAlgorithm? currentAlgorithm;
+    private int nMin = 50;
+    private int nMax = 2000;
+    private int step = 50;
+    private int runsPerN = 5;
+    private bool forceRecalculate = false;
+
+    private bool isRunning = false;
+    private int currentProgressN = 0;
+    private int outliersCount = 0;
+    private bool isFromCache = false;
+    private ExperimentRecord? lastResult;
+    private CancellationTokenSource? cts;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var algos = Registry.GetByCategory(AlgorithmCategory.Vectors);
+        if (algos.Count > 1)
+        {
+            SelectAlgorithm(algos[1]); // Сумма элементов по умолчанию
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && currentAlgorithm != null)
+        {
+            await Task.Delay(150); // Даем браузеру отрисовать canvas перед обращением к контексту 2D
+            await Chart.InitLiveChartAsync("liveChartCanvas", currentAlgorithm.Name);
+            await StartBenchmark();
+        }
+    }
+
+    private void SelectAlgorithm(IAlgorithm algo)
+    {
+        if (isRunning) return;
+        currentAlgorithm = algo;
+        nMin = algo.DefaultNMin;
+        nMax = algo.DefaultNMax;
+        step = algo.DefaultStep;
+        runsPerN = 5;
+        currentProgressN = 0;
+        outliersCount = 0;
+        isFromCache = false;
+        lastResult = null;
+    }
+
+    private double CalculateProgressPercent()
+    {
+        if (nMax <= nMin) return 100.0;
+        double progress = (double)(currentProgressN - nMin) / (nMax - nMin) * 100.0;
+        return Math.Clamp(progress, 0.0, 100.0);
+    }
+
+    private async Task StartBenchmark()
+    {
+        if (currentAlgorithm == null || isRunning) return;
+
+        isRunning = true;
+        isFromCache = false;
+        outliersCount = 0;
+        currentProgressN = nMin;
+        lastResult = null;
+        cts = new CancellationTokenSource();
+        StateHasChanged();
+
+        await Task.Delay(30);
+        await Chart.InitLiveChartAsync("liveChartCanvas", currentAlgorithm.Name);
+
+        string configHash = DatasetProvider.Config.ComputeHash();
+
+        // 1. Проверка кэша по ТЗ
+        if (!forceRecalculate)
+        {
+            var cachedPoints = await Storage.GetCachedPointsAsync(currentAlgorithm.Id, configHash);
+            if (cachedPoints != null && cachedPoints.Count > 0 &&
+                cachedPoints.First().N == nMin && cachedPoints.Last().N >= nMax)
+            {
+                isFromCache = true;
+                var filtered = cachedPoints.Where(p => p.N >= nMin && p.N <= nMax).ToList();
+                var approx = AlgorithmLab.Core.Math.ApproximationEngine.FitCurve(filtered, currentAlgorithm.Complexity);
+
+                lastResult = new ExperimentRecord
+                {
+                    AlgorithmId = currentAlgorithm.Id,
+                    AlgorithmName = currentAlgorithm.Name,
+                    Category = currentAlgorithm.Category,
+                    Complexity = currentAlgorithm.Complexity,
+                    ComplexityDisplay = currentAlgorithm.ComplexityDisplay,
+                    NMin = nMin,
+                    NMax = nMax,
+                    Step = step,
+                    RunsPerN = runsPerN,
+                    CFactor = approx.C,
+                    MSE = approx.MSE,
+                    RMSE = approx.RMSE,
+                    RSquared = approx.RSquared,
+                    ConfigHash = configHash,
+                    Points = filtered
+                };
+
+                var labels = filtered.Select(p => p.N).ToList();
+                var empData = filtered.Select(p => p.AvgMs).ToList();
+                var theoData = filtered.Select(p => p.TheoMs).ToList();
+                var outlierIndices = filtered.Select((p, idx) => (p, idx)).Where(t => t.p.IsOutlier).Select(t => t.idx).ToList();
+
+                await Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
+                currentProgressN = nMax;
+                outliersCount = outlierIndices.Count;
+
+                isRunning = false;
+                StateHasChanged();
+                return;
+            }
+        }
+
+        // 2. Живой запуск с потоковым push точек
+        try
+        {
+            var result = await BenchmarkEngine.RunExperimentAsync(
+                currentAlgorithm,
+                nMin,
+                nMax,
+                step,
+                runsPerN,
+                async pt =>
+                {
+                    currentProgressN = pt.N;
+                    if (pt.IsOutlier) outliersCount++;
+
+                    // Потоковая отправка точки в Chart.js (60 FPS)
+                    await Chart.AppendLivePointAsync("liveChartCanvas", pt.N, pt.AvgMs, pt.IsOutlier);
+                    await InvokeAsync(StateHasChanged);
+                },
+                cts.Token
+            );
+
+            lastResult = result;
+
+            // Наложение теоретической кривой МНК и обновление выбросов
+            var labels = result.Points.Select(p => p.N).ToList();
+            var empData = result.Points.Select(p => p.AvgMs).ToList();
+            var theoData = result.Points.Select(p => p.TheoMs).ToList();
+            var outlierIndices = result.Points.Select((p, idx) => (p, idx)).Where(t => t.p.IsOutlier).Select(t => t.idx).ToList();
+            outliersCount = outlierIndices.Count;
+
+            await Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
+
+            // Сохранение в БД / кэш
+            await Storage.SaveExperimentAsync(result);
+        }
+        catch (OperationCanceledException)
+        {
+            // Отменено пользователем
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BenchmarkView] Error in StartBenchmark: {ex.Message}");
+        }
+        finally
+        {
+            isRunning = false;
+            StateHasChanged();
+        }
+    }
+
+    private void StopBenchmark()
+    {
+        if (cts != null && !cts.IsCancellationRequested)
+        {
+            cts.Cancel();
+        }
+        isRunning = false;
+        StateHasChanged();
+    }
+}
