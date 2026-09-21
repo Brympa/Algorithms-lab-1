@@ -45,6 +45,7 @@ public class ExperimentRecord
     public double? MSE { get; set; }
     public double? RMSE { get; set; }
     public double? RSquared { get; set; }
+    public double TotalDurationMs { get; set; }
     public string ConfigHash { get; set; } = string.Empty;
     public string StorageSource { get; set; } = "Локальный кэш";
     public List<BenchmarkPoint> Points { get; set; } = new();
@@ -55,3 +56,27 @@ public class StepExecutionResult
     public double Value { get; set; }
     public long StepCount { get; set; }
 }
+
+public class DbConnectionConfig
+{
+    public string Host { get; set; } = "localhost";
+    public int Port { get; set; } = 5432;
+    public string Database { get; set; } = "algorithmlab";
+    public string Username { get; set; } = "postgres";
+    public string Password { get; set; } = "postgres";
+    public string SslMode { get; set; } = "Prefer"; // Disable, Prefer, Require
+
+    public string BuildConnectionString()
+    {
+        return $"Host={Host};Port={Port};Database={Database};Username={Username};Password={Password};SSL Mode={SslMode};Timeout=4;Command Timeout=5;";
+    }
+}
+
+public class DbConnectionTestResult
+{
+    public bool Success { get; set; }
+    public string Message { get; set; } = string.Empty;
+    public string? ServerVersion { get; set; }
+    public double LatencyMs { get; set; }
+}
+

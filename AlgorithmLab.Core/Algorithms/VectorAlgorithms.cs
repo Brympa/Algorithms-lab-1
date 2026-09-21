@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using AlgorithmLab.Core.Models;
 
 namespace AlgorithmLab.Core.Algorithms;
@@ -16,6 +17,7 @@ public class ConstantFunctionAlgorithm : IVectorAlgorithm
     public int DefaultStep => 2500;
     public int DefaultIterations => 200;
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public double Execute(double[] vector)
     {
         return 1.0;

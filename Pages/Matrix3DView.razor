@@ -1,3 +1,4 @@
+@using System.Diagnostics
 @using AlgorithmLab.Core.Algorithms
 @using AlgorithmLab.Core.Benchmark
 @using AlgorithmLab.Core.Dataset
@@ -10,13 +11,17 @@
 @inject Plotly3DInterop Plotly3D
 
 <div class="benchmark-workspace">
-    <!-- Описание Части II ТЗ -->
+    <!-- Описание Части II ТЗ с исправленной семантической формулой -->
     <div class="controls-cockpit liquid-glass" style="flex-direction: column; align-items: flex-start; gap: 0.6rem;">
         <div style="font-size: 1rem; font-weight: 700; color: var(--accent-cyan);">
             Часть II. Операции с матрицами A(n×m) и B(m×n)
         </div>
         <div style="font-size: 0.84rem; color: var(--text-secondary); line-height: 1.5;">
-            По техническому заданию исследуется обычное классическое умножение матриц \(C = A \times B\) (\(O(n \cdot m \cdot n) = O(n^2 m)\)) и строится <strong>трехмерный график зависимости машинного времени от размерностей n и m в реальном времени</strong>.
+            По техническому заданию исследуется классическое умножение прямоугольных матриц 
+            <span class="mono-cell" style="color: var(--text-primary); font-weight: 600;">C = A × B</span> 
+            размерностей <span class="mono-cell">A(n×m)</span> и <span class="mono-cell">B(m×n)</span> 
+            (теоретическая сложность <span class="complexity-pill">O(n² · m)</span>, при n = m переходящая в <span class="complexity-pill">O(n³)</span>) 
+            и строится <strong>трехмерный график зависимости машинного времени от размерностей n и m в реальном времени</strong>.
         </div>
     </div>
 
@@ -66,23 +71,30 @@
         </div>
     </div>
 
-    @if (isRunning)
-    {
-        <div class="telemetry-cockpit">
-            <div class="telemetry-metric">
-                <span class="metric-label">Текущая точка сетки:</span>
-                <span class="metric-value cyan">n = @currentN, m = @currentM</span>
-            </div>
-            <div class="telemetry-metric">
-                <span class="metric-label">Затраченное время:</span>
-                <span class="metric-value amber">@currentTimeMs.ToString("F3") мс</span>
-            </div>
+    <!-- Телеметрия и замер полного времени построения -->
+    <div class="telemetry-cockpit">
+        <div class="telemetry-metric">
+            <span class="metric-label">Точка сетки:</span>
+            <span class="metric-value cyan">@(isRunning ? $"n = {currentN}, m = {currentM}" : $"n: {nMin}..{nMax}, m: {mMin}..{mMax}")</span>
+        </div>
+        <div class="telemetry-metric">
+            <span class="metric-label">Время ячейки:</span>
+            <span class="metric-value amber">@(currentTimeMs > 0 ? $"{currentTimeMs:F3} мс" : "—")</span>
+        </div>
+        <div class="telemetry-metric">
+            <span class="metric-label">Итоговое время:</span>
+            <span class="metric-value emerald">
+                @(totalBuildTimeMs > 0 ? (totalBuildTimeMs >= 1000 ? $"{(totalBuildTimeMs / 1000.0):F2} с" : $"{totalBuildTimeMs:F0} мс") : (isRunning ? "Замер..." : "—"))
+            </span>
+        </div>
+        @if (isRunning)
+        {
             <div class="header-status-badge">
-                <span class="status-dot pulsing"></span>
+                <span class="status-dot pulsing online"></span>
                 <span>Потоковое 3D построение...</span>
             </div>
-        </div>
-    }
+        }
+    </div>
 
     <!-- 3D Поверхность Plotly.js -->
     <div class="chart-panel liquid-glass">
@@ -112,15 +124,18 @@
     private int currentN = 0;
     private int currentM = 0;
     private double currentTimeMs = 0;
+    private double totalBuildTimeMs = 0;
     private CancellationTokenSource? cts;
 
     private async Task RunMatrix3DBenchmark()
     {
         if (isRunning) return;
         isRunning = true;
+        totalBuildTimeMs = 0;
         cts = new CancellationTokenSource();
         StateHasChanged();
 
+        var totalSw = Stopwatch.StartNew();
         var matAlgo = new MatrixMultiplyAlgorithm();
 
         var nVals = new List<int>();
@@ -178,6 +193,8 @@
         }
         finally
         {
+            totalSw.Stop();
+            totalBuildTimeMs = totalSw.Elapsed.TotalMilliseconds;
             isRunning = false;
             StateHasChanged();
         }

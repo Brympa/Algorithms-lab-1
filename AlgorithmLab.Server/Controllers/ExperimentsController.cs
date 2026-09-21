@@ -57,6 +57,7 @@ public class ExperimentsController : ControllerBase
             MSE = e.MSE,
             RMSE = e.RMSE,
             RSquared = e.RSquared,
+            TotalDurationMs = e.TotalDurationMs,
             ConfigHash = e.ConfigHash ?? string.Empty,
             StorageSource = string.IsNullOrEmpty(e.StorageSource) ? "PostgreSQL 18" : e.StorageSource
         }).ToList();
@@ -90,6 +91,7 @@ public class ExperimentsController : ControllerBase
             MSE = e.MSE,
             RMSE = e.RMSE,
             RSquared = e.RSquared,
+            TotalDurationMs = e.TotalDurationMs,
             ConfigHash = e.ConfigHash ?? string.Empty,
             StorageSource = string.IsNullOrEmpty(e.StorageSource) ? "PostgreSQL 18" : e.StorageSource,
             Points = e.Points.OrderBy(p => p.N).Select(p => new BenchmarkPoint
@@ -134,6 +136,7 @@ public class ExperimentsController : ControllerBase
             MSE = record.MSE,
             RMSE = record.RMSE,
             RSquared = record.RSquared,
+            TotalDurationMs = record.TotalDurationMs,
             ConfigHash = record.ConfigHash,
             StorageSource = string.IsNullOrEmpty(record.StorageSource) ? "PostgreSQL 18" : record.StorageSource
         };
@@ -183,6 +186,14 @@ public class ExperimentsController : ControllerBase
                     RunsJson = JsonSerializer.Serialize(p.Runs),
                     UpdatedAt = DateTime.UtcNow
                 });
+            }
+            else
+            {
+                cache.AvgMs = p.AvgMs;
+                cache.MedianMs = p.MedianMs;
+                cache.StepCount = p.StepCount;
+                cache.RunsJson = JsonSerializer.Serialize(p.Runs);
+                cache.UpdatedAt = DateTime.UtcNow;
             }
         }
 

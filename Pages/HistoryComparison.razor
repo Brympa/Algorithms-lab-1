@@ -98,6 +98,7 @@
                         <th>Источник</th>
                         <th>Сложность</th>
                         <th>Диапазон N</th>
+                        <th>Время</th>
                         <th>Коэффициент C</th>
                         <th>Ошибка MSE</th>
                         <th>Качество R²</th>
@@ -134,6 +135,9 @@
                             </td>
                             <td><span class="complexity-pill">@exp.ComplexityDisplay</span></td>
                             <td class="mono-cell">@exp.NMin..@exp.NMax (шаг @exp.Step)</td>
+                            <td class="mono-cell" style="color: var(--accent-amber);">
+                                @(exp.TotalDurationMs > 0 ? (exp.TotalDurationMs >= 1000 ? $"{(exp.TotalDurationMs / 1000.0):F2} с" : $"{exp.TotalDurationMs:F0} мс") : "—")
+                            </td>
                             <td class="mono-cell" style="color: var(--accent-amber);">@(exp.CFactor.HasValue ? $"{exp.CFactor.Value:E3}" : "—")</td>
                             <td class="mono-cell" style="color: var(--accent-emerald);">@(exp.MSE.HasValue ? $"{exp.MSE.Value:E4}" : "—")</td>
                             <td class="mono-cell" style="color: var(--accent-cyan);">@(exp.RSquared.HasValue ? $"{exp.RSquared.Value:F4}" : "—")</td>
@@ -325,7 +329,7 @@
         foreach (var rec in fullRecords)
         {
             var pointMap = rec.Points.ToDictionary(p => p.N, p => p.AvgMs);
-            var dataList = new List<double>();
+            var dataList = new List<double?>();
             foreach (var n in commonLabels)
             {
                 if (pointMap.TryGetValue(n, out var val))
@@ -334,7 +338,7 @@
                 }
                 else
                 {
-                    dataList.Add(0.0);
+                    dataList.Add(null);
                 }
             }
 

@@ -1,4 +1,5 @@
 using AlgorithmLab.Server.Data;
+using AlgorithmLab.Server.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,11 +7,14 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Host=localhost;Port=5432;Database=algorithmlab;Username=postgres;Password=postgres";
+var connMgr = new DatabaseConnectionManager();
+builder.Services.AddSingleton(connMgr);
 
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseNpgsql(connectionString));
+builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+{
+    var mgr = sp.GetRequiredService<DatabaseConnectionManager>();
+    options.UseNpgsql(mgr.ConnectionString);
+});
 
 builder.Services.AddCors(options =>
 {

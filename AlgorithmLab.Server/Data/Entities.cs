@@ -32,6 +32,7 @@ public class ExperimentEntity
     public double? MSE { get; set; }
     public double? RMSE { get; set; }
     public double? RSquared { get; set; }
+    public double TotalDurationMs { get; set; }
 
     [MaxLength(64)]
     public string? ConfigHash { get; set; }

@@ -206,7 +206,8 @@ window.renderMultiSeriesChart = (canvasId, labels, seriesList, yLabel) => {
                 backgroundColor: color.bg,
                 borderWidth: 2,
                 tension: 0.15,
-                pointRadius: 2.5
+                pointRadius: 2.5,
+                spanGaps: true
             };
         });
 

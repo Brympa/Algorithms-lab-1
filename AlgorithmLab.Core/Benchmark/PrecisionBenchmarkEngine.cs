@@ -58,7 +58,7 @@ public class PrecisionBenchmarkEngine
     }
 
     /// <summary>
-    /// Асинхронный изолированный запуск с потоковой передачей точек в UI и гарантией не зависания вкладки
+    /// Асинхронный изолированный запуск с потоковой передачей точек в UI, точечным кэшем и замером полного времени
     /// </summary>
     public async Task<ExperimentRecord> RunExperimentAsync(
         IAlgorithm algorithm,
@@ -67,6 +67,7 @@ public class PrecisionBenchmarkEngine
         int step,
         int runsPerN,
         Func<BenchmarkPoint, Task>? onPointComputed = null,
+        Func<int, Task<BenchmarkPoint?>>? getCachedPoint = null,
         CancellationToken cancellationToken = default)
     {
         if (algorithm == null) throw new ArgumentNullException(nameof(algorithm));
@@ -74,6 +75,8 @@ public class PrecisionBenchmarkEngine
         if (runsPerN <= 0) runsPerN = 5;
         if (nMin <= 0) nMin = 1;
         if (nMax < nMin) nMax = nMin + step;
+
+        var totalStopwatch = Stopwatch.StartNew();
 
         await WarmupAsync(algorithm);
 
@@ -97,24 +100,34 @@ public class PrecisionBenchmarkEngine
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            BenchmarkPoint pt;
+            BenchmarkPoint? pt = null;
 
-            if (algorithm is IStepCountableAlgorithm stepAlgo)
+            // 1. Проверка точечного кэша (если передан поставщик кэша)
+            if (getCachedPoint != null)
             {
-                // Замер шагов по Части IV ТЗ
-                var stepRes = stepAlgo.ExecuteWithSteps(_datasetProvider.Config.PowerBase, n);
-                pt = new BenchmarkPoint
-                {
-                    N = n,
-                    StepCount = stepRes.StepCount,
-                    AvgMs = 0,
-                    MedianMs = 0
-                };
+                pt = await getCachedPoint(n);
             }
-            else
+
+            // 2. Если точки нет в кэше — производим замер
+            if (pt == null)
             {
-                // Эмпирический замер времени с изоляцией аллокаций
-                pt = MeasureTimeForN(algorithm, n, runsPerN);
+                if (algorithm is IStepCountableAlgorithm stepAlgo)
+                {
+                    // Замер шагов по Части IV ТЗ
+                    var stepRes = stepAlgo.ExecuteWithSteps(_datasetProvider.Config.PowerBase, n);
+                    pt = new BenchmarkPoint
+                    {
+                        N = n,
+                        StepCount = stepRes.StepCount,
+                        AvgMs = 0,
+                        MedianMs = 0
+                    };
+                }
+                else
+                {
+                    // Эмпирический замер времени с изоляцией аллокаций
+                    pt = MeasureTimeForN(algorithm, n, runsPerN);
+                }
             }
 
             allPoints.Add(pt);
@@ -143,6 +156,8 @@ public class PrecisionBenchmarkEngine
             experiment.RSquared = approx.RSquared;
         }
 
+        totalStopwatch.Stop();
+        experiment.TotalDurationMs = totalStopwatch.Elapsed.TotalMilliseconds;
         experiment.Points = allPoints;
         return experiment;
     }
@@ -240,12 +255,14 @@ public class PrecisionBenchmarkEngine
             {
                 GC.Collect(0, GCCollectionMode.Optimized);
 
+                double sink = 0.0;
                 long start = Stopwatch.GetTimestamp();
                 for (int it = 0; it < iterations; it++)
                 {
-                    vecAlgo.Execute(vector);
+                    sink += vecAlgo.Execute(vector);
                 }
                 long end = Stopwatch.GetTimestamp();
+                if (sink == 123456789.987) GC.KeepAlive(sink);
 
                 double totalMs = (double)(end - start) * 1000.0 / Stopwatch.Frequency;
                 double perIterationMs = totalMs / iterations;
@@ -317,10 +334,10 @@ public class PrecisionBenchmarkEngine
     {
         return complexity switch
         {
-            ComplexityType.O1 => 200,
-            ComplexityType.OLogN => 100,
-            ComplexityType.ON => System.Math.Max(10, 20000 / System.Math.Max(1, n)),
-            ComplexityType.ONLogN => System.Math.Max(5, 5000 / System.Math.Max(1, n)),
+            ComplexityType.O1 => 100_000, // 100 000 итераций обеспечивают статистически значимое время (5-15 мс), полностью устраняя квантование браузерного таймера
+            ComplexityType.OLogN => 20_000,
+            ComplexityType.ON => System.Math.Max(10, 50_000 / System.Math.Max(1, n)),
+            ComplexityType.ONLogN => System.Math.Max(5, 10_000 / System.Math.Max(1, n)),
             ComplexityType.ON2 => (n <= 100) ? 10 : (n <= 300 ? 3 : 1),
             ComplexityType.ON3 => (n <= 30) ? 5 : 1,
             _ => 1

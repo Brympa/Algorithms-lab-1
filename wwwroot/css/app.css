@@ -1044,3 +1044,32 @@ input[type="number"].param-input::-webkit-outer-spin-button {
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-subtle);
 }
+
+.status-dot.ruby {
+    background: var(--accent-ruby);
+    box-shadow: 0 0 8px var(--accent-ruby);
+}
+
+.running-border {
+    border-color: rgba(56, 189, 248, 0.8) !important;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+    animation: runningBorderPulse 1.8s infinite alternate;
+}
+
+@keyframes runningBorderPulse {
+    0% { border-color: rgba(56, 189, 248, 0.4); }
+    100% { border-color: rgba(56, 189, 248, 0.9); box-shadow: 0 0 14px rgba(56, 189, 248, 0.4); }
+}
+
+.checkbox-prominent:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+.btn-secondary.active-tab {
+    background: rgba(56, 189, 248, 0.12) !important;
+    border-color: var(--accent-cyan) !important;
+    color: var(--accent-cyan) !important;
+}

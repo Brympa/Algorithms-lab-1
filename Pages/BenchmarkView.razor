@@ -6,11 +6,14 @@
 @using AlgorithmLab.Services
 @using AlgorithmLab.Components
 
+@implements IDisposable
+
 @inject IAlgorithmRegistry Registry
 @inject IMasterDatasetProvider DatasetProvider
 @inject PrecisionBenchmarkEngine BenchmarkEngine
 @inject ChartInterop Chart
 @inject IExperimentStorageService Storage
+@inject BenchmarkQueueService QueueService
 
 <div class="benchmark-grid">
     <!-- Левая панель: выбор исследуемого алгоритма -->
@@ -20,10 +23,23 @@
             <div class="algo-button-list">
                 @foreach (var algo in Registry.GetByCategory(AlgorithmCategory.Vectors))
                 {
-                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "")"
-                            @onclick="() => SelectAlgorithm(algo)" disabled="@isRunning">
+                    bool isRunningAlgo = QueueService.CurrentRunningItem?.Algorithm.Id == algo.Id;
+                    bool isQueuedAlgo = QueueService.Items.Any(x => x.Algorithm.Id == algo.Id && x.Status == QueueItemStatus.Queued);
+
+                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "") @(isRunningAlgo ? "running-border" : "")"
+                            @onclick="() => SelectAlgorithm(algo)">
                         <span>@algo.Name</span>
-                        <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                        <div style="display: flex; align-items: center; gap: 0.35rem;">
+                            @if (isRunningAlgo)
+                            {
+                                <span class="status-dot pulsing online" title="Алгоритм сейчас выполняется"></span>
+                            }
+                            else if (isQueuedAlgo)
+                            {
+                                <span class="status-dot pulsing local" title="В очереди на выполнение"></span>
+                            }
+                            <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                        </div>
                     </button>
                 }
             </div>
@@ -34,10 +50,23 @@
             <div class="algo-button-list">
                 @foreach (var algo in Registry.GetByCategory(AlgorithmCategory.Sorts))
                 {
-                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "")"
-                            @onclick="() => SelectAlgorithm(algo)" disabled="@isRunning">
+                    bool isRunningAlgo = QueueService.CurrentRunningItem?.Algorithm.Id == algo.Id;
+                    bool isQueuedAlgo = QueueService.Items.Any(x => x.Algorithm.Id == algo.Id && x.Status == QueueItemStatus.Queued);
+
+                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "") @(isRunningAlgo ? "running-border" : "")"
+                            @onclick="() => SelectAlgorithm(algo)">
                         <span>@algo.Name</span>
-                        <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                        <div style="display: flex; align-items: center; gap: 0.35rem;">
+                            @if (isRunningAlgo)
+                            {
+                                <span class="status-dot pulsing online" title="Алгоритм сейчас выполняется"></span>
+                            }
+                            else if (isQueuedAlgo)
+                            {
+                                <span class="status-dot pulsing local" title="В очереди на выполнение"></span>
+                            }
+                            <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                        </div>
                     </button>
                 }
             </div>
@@ -48,17 +77,30 @@
             <div class="algo-button-list">
                 @foreach (var algo in Registry.GetByCategory(AlgorithmCategory.Individual))
                 {
-                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "")"
-                            @onclick="() => SelectAlgorithm(algo)" disabled="@isRunning">
+                    bool isRunningAlgo = QueueService.CurrentRunningItem?.Algorithm.Id == algo.Id;
+                    bool isQueuedAlgo = QueueService.Items.Any(x => x.Algorithm.Id == algo.Id && x.Status == QueueItemStatus.Queued);
+
+                    <button class="algo-selector-btn @(currentAlgorithm?.Id == algo.Id ? "active" : "") @(isRunningAlgo ? "running-border" : "")"
+                            @onclick="() => SelectAlgorithm(algo)">
                         <span>@algo.Name</span>
-                        <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                        <div style="display: flex; align-items: center; gap: 0.35rem;">
+                            @if (isRunningAlgo)
+                            {
+                                <span class="status-dot pulsing online" title="Алгоритм сейчас выполняется"></span>
+                            }
+                            else if (isQueuedAlgo)
+                            {
+                                <span class="status-dot pulsing local" title="В очереди на выполнение"></span>
+                            }
+                            <span class="complexity-pill">@algo.ComplexityDisplay</span>
+                        </div>
                     </button>
                 }
             </div>
         </div>
     </aside>
 
-    <!-- Правая область: Панель приборов и Live-график -->
+    <!-- Правая область: Панель приборов, очередь и Live-график -->
     <main class="benchmark-workspace">
         @if (currentAlgorithm != null)
         {
@@ -66,28 +108,31 @@
             <div class="controls-cockpit liquid-glass">
                 <div class="param-group">
                     <span class="param-label">N min:</span>
-                    <NumericStepper @bind-Value="nMin" Min="1" Max="100000" Step="10" Disabled="@isRunning" Width="72" />
+                    <NumericStepper @bind-Value="nMin" Min="1" Max="100000" Step="10" Width="72" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">N max:</span>
-                    <NumericStepper @bind-Value="nMax" Min="10" Max="200000" Step="50" Disabled="@isRunning" Width="82" />
+                    <NumericStepper @bind-Value="nMax" Min="10" Max="200000" Step="50" Width="82" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">Шаг:</span>
-                    <NumericStepper @bind-Value="step" Min="1" Max="10000" Step="10" Disabled="@isRunning" Width="68" />
+                    <NumericStepper @bind-Value="step" Min="1" Max="10000" Step="10" Width="68" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">Прогонов:</span>
-                    <NumericStepper @bind-Value="runsPerN" Min="1" Max="20" Step="1" Disabled="@isRunning" Width="55" />
+                    <NumericStepper @bind-Value="runsPerN" Min="1" Max="20" Step="1" Width="55" />
                 </div>
 
-                <div class="param-group" style="gap: 0.4rem;">
-                    <input type="checkbox" id="forceRecalc" class="checkbox-custom" @bind="forceRecalculate" disabled="@isRunning" />
-                    <label for="forceRecalc" class="param-label" style="cursor: pointer;">Принудительный пересчет</label>
+                <!-- Чекбокс принудительного перерасчета в едином стиле checkbox-prominent -->
+                <div class="param-group" style="gap: 0.6rem; align-items: center;">
+                    <input type="checkbox" id="forceRecalc" class="checkbox-prominent" style="margin: 0;" @bind="forceRecalculate" />
+                    <label for="forceRecalc" class="param-label" style="cursor: pointer; user-select: none; font-weight: 500;">
+                        Принудительный пересчет
+                    </label>
                 </div>
 
                 <div class="btn-actions-group">
-                    @if (!isRunning)
+                    @if (!QueueService.IsRunning)
                     {
                         <button class="btn-primary" @onclick="StartBenchmark">
                             <SvgIcon Name="play" Size="16" />
@@ -96,7 +141,11 @@
                     }
                     else
                     {
-                        <button class="btn-danger" @onclick="StopBenchmark">
+                        <button class="btn-primary" @onclick="EnqueueCurrent">
+                            <SvgIcon Name="plus" Size="16" />
+                            <span>В очередь</span>
+                        </button>
+                        <button class="btn-danger" @onclick="QueueService.CancelCurrent" title="Остановить текущий расчет">
                             <SvgIcon Name="stop" Size="16" />
                             <span>Прервать</span>
                         </button>
@@ -104,15 +153,91 @@
                 </div>
             </div>
 
+            <!-- Интерактивная панель очереди выполнения (если есть задачи) -->
+            @if (QueueService.Items.Count > 0)
+            {
+                <div class="chart-panel liquid-glass" style="padding: 0.85rem 1.25rem;">
+                    <div class="chart-header" style="margin-bottom: 0.6rem; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 0.6rem;">
+                            <span class="status-dot @(QueueService.IsRunning ? "online pulsing" : "local")"></span>
+                            <h3 style="font-size: 0.92rem; font-weight: 600; margin: 0;">Очередь задач выполнения</h3>
+                            <span class="brand-badge" style="font-size: 0.72rem;">
+                                @QueueService.Items.Count(x => x.Status == QueueItemStatus.Queued) в очереди
+                            </span>
+                        </div>
+                        @if (QueueService.Items.Any(x => x.Status == QueueItemStatus.Queued))
+                        {
+                            <button class="btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" @onclick="QueueService.ClearQueue">
+                                <SvgIcon Name="trash" Size="13" />
+                                <span>Очистить очередь</span>
+                            </button>
+                        }
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                        @foreach (var item in QueueService.Items.TakeLast(6))
+                        {
+                            bool isCurrent = item.Status == QueueItemStatus.Running;
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 0.75rem; background: rgba(10, 15, 29, 0.6); border-radius: var(--radius-sm); border: 1px solid @(isCurrent ? "rgba(56, 189, 248, 0.4)" : "rgba(255, 255, 255, 0.05)");">
+                                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                    @if (isCurrent)
+                                    {
+                                        <span class="status-dot pulsing online"></span>
+                                    }
+                                    <span style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary);">@item.Algorithm.Name</span>
+                                    <span class="mono-cell" style="font-size: 0.75rem; color: var(--text-muted);">
+                                        N: @item.NMin..@item.NMax (шаг @item.Step)
+                                    </span>
+                                </div>
+
+                                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                    @if (item.Status == QueueItemStatus.Running)
+                                    {
+                                        <span class="source-badge pg" style="color: var(--accent-cyan);">
+                                            Выполняется (@item.CurrentProgressN / @item.NMax)
+                                        </span>
+                                    }
+                                    else if (item.Status == QueueItemStatus.Queued)
+                                    {
+                                        <span class="source-badge local">Ожидает</span>
+                                        <button class="filter-reset-btn" style="padding: 0.15rem 0.4rem;" @onclick="() => QueueService.RemoveItem(item.Id)">
+                                            <SvgIcon Name="x" Size="12" />
+                                        </button>
+                                    }
+                                    else if (item.Status == QueueItemStatus.Completed)
+                                    {
+                                        <span class="source-badge pg" style="color: var(--accent-emerald);">
+                                            Готово (@FormatDuration(item.TotalDurationMs))
+                                        </span>
+                                    }
+                                    else if (item.Status == QueueItemStatus.Canceled)
+                                    {
+                                        <span class="source-badge local" style="color: var(--accent-ruby);">Отменено</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
             <!-- Телеметрия и индикаторы качества аппроксимации -->
             <div class="telemetry-cockpit">
                 <div class="telemetry-metric">
                     <span class="metric-label">Размер N:</span>
-                    <span class="metric-value cyan">@(isRunning ? $"{currentProgressN} / {nMax}" : $"{currentProgressN}")</span>
+                    <span class="metric-value cyan">
+                        @(isCurrentAlgoRunning ? $"{currentProgressN} / {nMax}" : $"{currentProgressN}")
+                    </span>
                 </div>
                 <div class="telemetry-metric">
                     <span class="metric-label">Выбросы:</span>
                     <span class="metric-value ruby">@outliersCount</span>
+                </div>
+                <div class="telemetry-metric">
+                    <span class="metric-label">Время построения:</span>
+                    <span class="metric-value amber">
+                        @(lastResult != null ? FormatDuration(lastResult.TotalDurationMs) : (isCurrentAlgoRunning ? "Замер..." : "—"))
+                    </span>
                 </div>
                 <div class="telemetry-metric">
                     <span class="metric-label">Коэффициент C:</span>
@@ -129,7 +254,7 @@
             </div>
 
             <!-- Прогресс выполнения -->
-            @if (isRunning)
+            @if (isCurrentAlgoRunning)
             {
                 <div class="live-progress-track">
                     <div class="live-progress-fill" style="width: @(CalculateProgressPercent())%;"></div>
@@ -146,7 +271,7 @@
                             | Данные: Master Dataset (@DatasetProvider.Config.Distribution)
                             @if (isFromCache)
                             {
-                                <span class="brand-badge" style="margin-left: 0.5rem;">Кэш БД</span>
+                                <span class="brand-badge" style="margin-left: 0.5rem;">Кэш данных</span>
                             }
                         </div>
                     </div>
@@ -196,15 +321,20 @@
     private int runsPerN = 5;
     private bool forceRecalculate = false;
 
-    private bool isRunning = false;
     private int currentProgressN = 0;
     private int outliersCount = 0;
     private bool isFromCache = false;
     private ExperimentRecord? lastResult;
-    private CancellationTokenSource? cts;
+
+    private bool isCurrentAlgoRunning => QueueService.CurrentRunningItem?.Algorithm.Id == currentAlgorithm?.Id;
 
     protected override async Task OnInitializedAsync()
     {
+        QueueService.OnQueueChanged += HandleQueueState;
+        QueueService.OnItemStarted += HandleItemStarted;
+        QueueService.OnPointComputed += HandlePointComputed;
+        QueueService.OnItemCompleted += HandleItemCompleted;
+
         var algos = Registry.GetByCategory(AlgorithmCategory.Vectors);
         if (algos.Count > 1)
         {
@@ -212,19 +342,25 @@
         }
     }
 
+    public void Dispose()
+    {
+        QueueService.OnQueueChanged -= HandleQueueState;
+        QueueService.OnItemStarted -= HandleItemStarted;
+        QueueService.OnPointComputed -= HandlePointComputed;
+        QueueService.OnItemCompleted -= HandleItemCompleted;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender && currentAlgorithm != null)
         {
-            await Task.Delay(150); // Даем браузеру отрисовать canvas перед обращением к контексту 2D
+            await Task.Delay(150);
             await Chart.InitLiveChartAsync("liveChartCanvas", currentAlgorithm.Name);
-            // Алгоритм НЕ запускается автоматически, ожидает нажатия кнопки пользователем
         }
     }
 
     private void SelectAlgorithm(IAlgorithm algo)
     {
-        if (isRunning) return;
         currentAlgorithm = algo;
         nMin = algo.DefaultNMin;
         nMax = algo.DefaultNMax;
@@ -234,6 +370,17 @@
         outliersCount = 0;
         isFromCache = false;
         lastResult = null;
+
+        // Если в очереди есть готовый результат для этого алгоритма — отображаем его
+        var completed = QueueService.Items.LastOrDefault(x => x.Algorithm.Id == algo.Id && x.Status == QueueItemStatus.Completed);
+        if (completed?.Result != null)
+        {
+            RenderCompletedResult(completed.Result);
+        }
+        else
+        {
+            _ = Chart.InitLiveChartAsync("liveChartCanvas", algo.Name);
+        }
     }
 
     private double CalculateProgressPercent()
@@ -243,125 +390,76 @@
         return Math.Clamp(progress, 0.0, 100.0);
     }
 
+    private static string FormatDuration(double ms)
+    {
+        if (ms >= 1000)
+        {
+            return $"{(ms / 1000.0):F2} с";
+        }
+        return $"{ms:F1} мс";
+    }
+
     private async Task StartBenchmark()
     {
-        if (currentAlgorithm == null || isRunning) return;
+        if (currentAlgorithm == null) return;
+        EnqueueCurrent();
+    }
 
-        isRunning = true;
-        isFromCache = false;
-        outliersCount = 0;
-        currentProgressN = nMin;
-        lastResult = null;
-        cts = new CancellationTokenSource();
-        StateHasChanged();
+    private void EnqueueCurrent()
+    {
+        if (currentAlgorithm == null) return;
+        QueueService.Enqueue(currentAlgorithm, nMin, nMax, step, runsPerN, forceRecalculate);
+    }
 
-        await Task.Delay(30);
-        await Chart.InitLiveChartAsync("liveChartCanvas", currentAlgorithm.Name);
+    private async void HandleQueueState()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
 
-        string configHash = DatasetProvider.Config.ComputeHash();
-
-        // 1. Проверка кэша по ТЗ
-        if (!forceRecalculate)
+    private async void HandleItemStarted(BenchmarkQueueItem item)
+    {
+        if (currentAlgorithm != null && item.Algorithm.Id == currentAlgorithm.Id)
         {
-            var cachedPoints = await Storage.GetCachedPointsAsync(currentAlgorithm.Id, configHash);
-            if (cachedPoints != null && cachedPoints.Count > 0 &&
-                cachedPoints.First().N == nMin && cachedPoints.Last().N >= nMax)
-            {
-                isFromCache = true;
-                var filtered = cachedPoints.Where(p => p.N >= nMin && p.N <= nMax).ToList();
-                var approx = AlgorithmLab.Core.Math.ApproximationEngine.FitCurve(filtered, currentAlgorithm.Complexity);
-
-                lastResult = new ExperimentRecord
-                {
-                    AlgorithmId = currentAlgorithm.Id,
-                    AlgorithmName = currentAlgorithm.Name,
-                    Category = currentAlgorithm.Category,
-                    Complexity = currentAlgorithm.Complexity,
-                    ComplexityDisplay = currentAlgorithm.ComplexityDisplay,
-                    NMin = nMin,
-                    NMax = nMax,
-                    Step = step,
-                    RunsPerN = runsPerN,
-                    CFactor = approx.C,
-                    MSE = approx.MSE,
-                    RMSE = approx.RMSE,
-                    RSquared = approx.RSquared,
-                    ConfigHash = configHash,
-                    Points = filtered
-                };
-
-                var labels = filtered.Select(p => p.N).ToList();
-                var empData = filtered.Select(p => p.AvgMs).ToList();
-                var theoData = filtered.Select(p => p.TheoMs).ToList();
-                var outlierIndices = filtered.Select((p, idx) => (p, idx)).Where(t => t.p.IsOutlier).Select(t => t.idx).ToList();
-
-                await Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
-                currentProgressN = nMax;
-                outliersCount = outlierIndices.Count;
-
-                isRunning = false;
-                StateHasChanged();
-                return;
-            }
+            currentProgressN = item.NMin;
+            outliersCount = 0;
+            isFromCache = false;
+            lastResult = null;
+            await Chart.InitLiveChartAsync("liveChartCanvas", item.Algorithm.Name);
         }
+        await InvokeAsync(StateHasChanged);
+    }
 
-        // 2. Живой запуск с потоковым push точек
-        try
+    private async void HandlePointComputed(BenchmarkQueueItem item, BenchmarkPoint pt)
+    {
+        if (currentAlgorithm != null && item.Algorithm.Id == currentAlgorithm.Id)
         {
-            var result = await BenchmarkEngine.RunExperimentAsync(
-                currentAlgorithm,
-                nMin,
-                nMax,
-                step,
-                runsPerN,
-                async pt =>
-                {
-                    currentProgressN = pt.N;
-                    if (pt.IsOutlier) outliersCount++;
-
-                    // Потоковая отправка точки в Chart.js (60 FPS)
-                    await Chart.AppendLivePointAsync("liveChartCanvas", pt.N, pt.AvgMs, pt.IsOutlier);
-                    await InvokeAsync(StateHasChanged);
-                },
-                cts.Token
-            );
-
-            lastResult = result;
-
-            // Наложение теоретической кривой МНК и обновление выбросов
-            var labels = result.Points.Select(p => p.N).ToList();
-            var empData = result.Points.Select(p => p.AvgMs).ToList();
-            var theoData = result.Points.Select(p => p.TheoMs).ToList();
-            var outlierIndices = result.Points.Select((p, idx) => (p, idx)).Where(t => t.p.IsOutlier).Select(t => t.idx).ToList();
-            outliersCount = outlierIndices.Count;
-
-            await Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
-
-            // Сохранение в БД / кэш
-            await Storage.SaveExperimentAsync(result);
-        }
-        catch (OperationCanceledException)
-        {
-            // Отменено пользователем
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[BenchmarkView] Error in StartBenchmark: {ex.Message}");
-        }
-        finally
-        {
-            isRunning = false;
-            StateHasChanged();
+            currentProgressN = pt.N;
+            if (pt.IsOutlier) outliersCount++;
+            await Chart.AppendLivePointAsync("liveChartCanvas", pt.N, pt.AvgMs, pt.IsOutlier);
+            await InvokeAsync(StateHasChanged);
         }
     }
 
-    private void StopBenchmark()
+    private async void HandleItemCompleted(BenchmarkQueueItem item)
     {
-        if (cts != null && !cts.IsCancellationRequested)
+        if (currentAlgorithm != null && item.Algorithm.Id == currentAlgorithm.Id && item.Result != null)
         {
-            cts.Cancel();
+            RenderCompletedResult(item.Result);
         }
-        isRunning = false;
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RenderCompletedResult(ExperimentRecord result)
+    {
+        lastResult = result;
+        currentProgressN = result.NMax;
+        var outlierIndices = result.Points.Select((p, idx) => (p, idx)).Where(t => t.p.IsOutlier).Select(t => t.idx).ToList();
+        outliersCount = outlierIndices.Count;
+
+        var labels = result.Points.Select(p => p.N).ToList();
+        var empData = result.Points.Select(p => p.AvgMs).ToList();
+        var theoData = result.Points.Select(p => p.TheoMs).ToList();
+
+        _ = Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
     }
 }

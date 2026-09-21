@@ -106,4 +106,117 @@ public class CoreTests
         Assert.True(idxKmp >= 0);
         Assert.Equal(idxNaive, idxKmp);
     }
+
+    [Fact]
+    public async Task ConstantFunction_And_AdaptiveCalibration_ProducesPositiveMeasurableDuration()
+    {
+        var provider = new MasterDatasetProvider();
+        var engine = new AlgorithmLab.Core.Benchmark.PrecisionBenchmarkEngine(provider);
+        var constAlgo = new ConstantFunctionAlgorithm();
+
+        var result = await engine.RunExperimentAsync(
+            constAlgo,
+            nMin: 1000,
+            nMax: 5000,
+            step: 2000,
+            runsPerN: 3
+        );
+
+        Assert.NotEmpty(result.Points);
+        foreach (var pt in result.Points)
+        {
+            Assert.True(pt.AvgMs > 0, $"Point N={pt.N} must have AvgMs > 0, but was {pt.AvgMs}");
+        }
+
+        Assert.True(result.TotalDurationMs > 0, "TotalDurationMs must be positive");
+        Assert.NotNull(result.CFactor);
+        Assert.True(result.CFactor.Value > 0, "C factor must be positive for constant function");
+    }
+
+    [Fact]
+    public void MatrixMultiplication_RectangularMatrices_CorrectDimensions_And_Multiplication()
+    {
+        var provider = new MasterDatasetProvider();
+        int n = 4, m = 6;
+        (var A, var B) = provider.GenerateMatrices(n, m);
+
+        Assert.Equal(n, A.GetLength(0));
+        Assert.Equal(m, A.GetLength(1));
+        Assert.Equal(m, B.GetLength(0));
+        Assert.Equal(n, B.GetLength(1));
+
+        var algo = new MatrixMultiplyAlgorithm();
+        var C = algo.Execute(A, B);
+
+        Assert.Equal(n, C.GetLength(0));
+        Assert.Equal(n, C.GetLength(1));
+
+        // Проверяем известное значение для единичной матрицы
+        double[,] A1 = { { 1, 2, 3 }, { 4, 5, 6 } }; // 2x3
+        double[,] B1 = { { 7, 8 }, { 9, 1 }, { 2, 3 } }; // 3x2
+        var C1 = algo.Execute(A1, B1);
+
+        // C1[0,0] = 1*7 + 2*9 + 3*2 = 7 + 18 + 6 = 31
+        // C1[0,1] = 1*8 + 2*1 + 3*3 = 8 + 2 + 9 = 19
+        // C1[1,0] = 4*7 + 5*9 + 6*2 = 28 + 45 + 12 = 85
+        // C1[1,1] = 4*8 + 5*1 + 6*3 = 32 + 5 + 18 = 55
+        Assert.Equal(31.0, C1[0, 0]);
+        Assert.Equal(19.0, C1[0, 1]);
+        Assert.Equal(85.0, C1[1, 0]);
+        Assert.Equal(55.0, C1[1, 1]);
+    }
+
+    [Fact]
+    public async Task PointByPointCache_ReusesCachedPoints_And_ComputesMissing()
+    {
+        var provider = new MasterDatasetProvider();
+        var engine = new AlgorithmLab.Core.Benchmark.PrecisionBenchmarkEngine(provider);
+        var sumAlgo = new SumFunctionAlgorithm();
+
+        var preCachedPoint = new BenchmarkPoint
+        {
+            N = 100,
+            AvgMs = 0.042,
+            MedianMs = 0.042,
+            Runs = new() { new() { RunIndex = 1, ElapsedMs = 0.042 } }
+        };
+
+        var result = await engine.RunExperimentAsync(
+            sumAlgo,
+            nMin: 100,
+            nMax: 200,
+            step: 100,
+            runsPerN: 3,
+            getCachedPoint: n => Task.FromResult(n == 100 ? preCachedPoint : (BenchmarkPoint?)null)
+        );
+
+        Assert.Equal(2, result.Points.Count);
+        // Точка 100 взята из кэша ровно со значением 0.042
+        Assert.Equal(0.042, result.Points[0].AvgMs);
+        // Точка 200 посчитана динамически и > 0
+        Assert.True(result.Points[1].AvgMs > 0);
+    }
+
+    [Fact]
+    public void DbConnectionConfig_BuildsValidConnectionString()
+    {
+        var cfg = new DbConnectionConfig
+        {
+            Host = "192.168.1.100",
+            Port = 5433,
+            Database = "custom_lab",
+            Username = "lab_user",
+            Password = "secret_password",
+            SslMode = "Require"
+        };
+
+        string connStr = cfg.BuildConnectionString();
+        Assert.Contains("Host=192.168.1.100", connStr);
+        Assert.Contains("Port=5433", connStr);
+        Assert.Contains("Database=custom_lab", connStr);
+        Assert.Contains("Username=lab_user", connStr);
+        Assert.Contains("Password=secret_password", connStr);
+        Assert.Contains("SSL Mode=Require", connStr);
+    }
 }
+

@@ -84,5 +84,5 @@ public class ChartInterop
 public class SeriesData
 {
     public string Name { get; set; } = string.Empty;
-    public List<double> Data { get; set; } = new();
+    public List<double?> Data { get; set; } = new();
 }

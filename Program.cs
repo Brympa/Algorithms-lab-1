@@ -26,4 +26,7 @@ builder.Services.AddScoped<Plotly3DInterop>();
 // Хранилище (PostgreSQL 18 + Offline Local Cache)
 builder.Services.AddScoped<IExperimentStorageService, HybridExperimentStorageService>();
 
+// Очередь задач для алгоритмов
+builder.Services.AddScoped<BenchmarkQueueService>();
+
 await builder.Build().RunAsync();
