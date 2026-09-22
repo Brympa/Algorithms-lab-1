@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Security.Cryptography;
 using System.Text;
+using System.Linq;
 
 namespace AlgorithmLab.Core.Dataset;
 
@@ -16,7 +17,25 @@ public class DatasetConfig
 
     public string ComputeHash()
     {
-        var raw = $"{Version}:{Seed}:{Distribution}:{MaxPrecomputedSize}:{PolynomialX}:{PowerBase}:{CustomVectors?.Count ?? 0}";
+        // Включаем содержимое CustomVectors, чтобы разные векторы при одинаковом Count
+        // не давали коллизию ключа кэша.
+        var vectorsPart = string.Empty;
+        if (CustomVectors != null)
+        {
+            var sb = new StringBuilder();
+            foreach (var kv in CustomVectors.OrderBy(k => k.Key))
+            {
+                sb.Append(kv.Key).Append(':');
+                foreach (var v in kv.Value)
+                {
+                    sb.Append(v.ToString("R")).Append(',');
+                }
+                sb.Append(';');
+            }
+            vectorsPart = sb.ToString();
+        }
+
+        var raw = $"{Version}:{Seed}:{Distribution}:{MaxPrecomputedSize}:{PolynomialX}:{PowerBase}:{vectorsPart}";
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
         return Convert.ToHexString(bytes)[..16];

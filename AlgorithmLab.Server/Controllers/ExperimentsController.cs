@@ -191,6 +191,8 @@ public class ExperimentsController : ControllerBase
                     MedianMs = p.MedianMs,
                     StepCount = p.StepCount,
                     RunsJson = JsonSerializer.Serialize(p.Runs),
+                    IsOutlier = p.IsOutlier,
+                    TheoMs = p.TheoMs,
                     UpdatedAt = DateTime.UtcNow
                 });
             }
@@ -200,6 +202,8 @@ public class ExperimentsController : ControllerBase
                 cache.MedianMs = p.MedianMs;
                 cache.StepCount = p.StepCount;
                 cache.RunsJson = JsonSerializer.Serialize(p.Runs);
+                cache.IsOutlier = p.IsOutlier;
+                cache.TheoMs = p.TheoMs;
                 cache.UpdatedAt = DateTime.UtcNow;
             }
         }
@@ -226,7 +230,9 @@ public class ExperimentsController : ControllerBase
             M = c.M,
             AvgMs = c.AvgMs,
             MedianMs = c.MedianMs,
+            TheoMs = c.TheoMs ?? 0,
             StepCount = c.StepCount,
+            IsOutlier = c.IsOutlier,
             Runs = !string.IsNullOrEmpty(c.RunsJson)
                 ? JsonSerializer.Deserialize<List<PointRun>>(c.RunsJson) ?? new()
                 : new()

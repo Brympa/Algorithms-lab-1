@@ -95,4 +95,6 @@ public class BenchmarkCacheEntity
     public long StepCount { get; set; }
     public string? RunsJson { get; set; }
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsOutlier { get; set; }
+    public double? TheoMs { get; set; }
 }

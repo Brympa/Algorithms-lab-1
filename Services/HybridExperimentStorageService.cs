@@ -13,6 +13,16 @@ public class HybridExperimentStorageService : IExperimentStorageService
     private readonly Dictionary<string, List<BenchmarkPoint>> _localCache = new();
     private bool _isInitialized = false;
 
+    // Debounce фоновой записи localStorage (WASM single-thread — не пишем синхронно в hot path)
+    private CancellationTokenSource? _persistCts;
+    private bool _persistQueued;
+
+    // Бюджет кэша: ограничиваем рост, чтобы JSON не упирался в quota ~5MB
+    private const int MaxCacheKeys = 40;
+    private const int MaxPointsPerKey = 400;
+    private const int MaxHistoryCount = 30;
+    private const int PersistDebounceMs = 400;
+
     public DatabaseStatus Status { get; private set; } = DatabaseStatus.Checking;
     public string StatusMessage { get; private set; } = "Проверка подключения к PostgreSQL 18...";
     public string ApiUrl { get; set; } = "http://localhost:5000/api";
@@ -28,7 +38,6 @@ public class HybridExperimentStorageService : IExperimentStorageService
     public async Task InitializeAsync()
     {
         if (_isInitialized) return;
-        _isInitialized = true;
 
         try
         {
@@ -55,10 +64,13 @@ public class HybridExperimentStorageService : IExperimentStorageService
                     }
                 }
             }
+
+            // Флаг только после успешного чтения — иначе при prerender-ошибке кэш навсегда пуст
+            _isInitialized = true;
         }
         catch
         {
-            // Prerender / localStorage недоступен
+            // Prerender / localStorage недоступен — не помечаем initialized
         }
     }
 
@@ -99,7 +111,6 @@ public class HybridExperimentStorageService : IExperimentStorageService
         await InitializeAsync();
         string cacheKey = $"{algorithmId}:{configHash}";
 
-        // Если подключен к PostgreSQL 18 через API
         if (Status == DatabaseStatus.ConnectedPostgreSql)
         {
             try
@@ -117,7 +128,6 @@ public class HybridExperimentStorageService : IExperimentStorageService
             }
         }
 
-        // Локальный кэш
         if (_localCache.TryGetValue(cacheKey, out var localPoints) && localPoints.Count > 0)
         {
             return localPoints;
@@ -131,14 +141,12 @@ public class HybridExperimentStorageService : IExperimentStorageService
         await InitializeAsync();
         string cacheKey = $"{algorithmId}:{configHash}";
 
-        // 1. Быстрая проверка в локальной памяти/кэше
         if (_localCache.TryGetValue(cacheKey, out var localPoints) && localPoints != null)
         {
             var found = localPoints.FirstOrDefault(p => p.N == n);
             if (found != null) return found;
         }
 
-        // 2. Если онлайн в PostgreSQL, проверяем там
         if (Status == DatabaseStatus.ConnectedPostgreSql)
         {
             try
@@ -146,7 +154,6 @@ public class HybridExperimentStorageService : IExperimentStorageService
                 var points = await GetCachedPointsAsync(algorithmId, configHash);
                 if (points != null)
                 {
-                    // Сохраняем в локальную память для последующих обращений
                     if (!_localCache.TryGetValue(cacheKey, out var list))
                     {
                         list = new List<BenchmarkPoint>();
@@ -175,11 +182,9 @@ public class HybridExperimentStorageService : IExperimentStorageService
         if (record.Id == Guid.Empty) record.Id = Guid.NewGuid();
         record.StorageSource = Status == DatabaseStatus.ConnectedPostgreSql ? "PostgreSQL 18" : "Локальный кэш";
 
-        // 1. Всегда сохраняем в локальное хранилище для мгновенного доступа
         _localExperiments.RemoveAll(x => x.Id == record.Id);
         _localExperiments.Insert(0, record);
 
-        // Аккумулируем (сливаем) точки в кэше, чтобы не терять ранее вычисленные N
         string cacheKey = $"{record.AlgorithmId}:{record.ConfigHash}";
         if (!_localCache.TryGetValue(cacheKey, out var existingPoints))
         {
@@ -193,12 +198,99 @@ public class HybridExperimentStorageService : IExperimentStorageService
             existingPoints.Add(pt);
         }
 
-        // Персистентность в localStorage:
-        // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ ДЛЯ ПРЕДОТВРАЩЕНИЯ ПЕРЕПОЛНЕНИЯ КВОТЫ И ФРИЗА:
-        // Сохраняем компактные копии без массивов Runs (нужных только во время замера)
+        // Бюджет кэша/истории + debounced запись в localStorage (не блокирует hot path)
+        TrimCaches();
+        SchedulePersist();
+
+        // Если онлайн — сохраняем в PostgreSQL (таймаут 3 с); вызывается из фона очереди
+        if (Status == DatabaseStatus.ConnectedPostgreSql)
+        {
+            try
+            {
+                using var saveCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var resp = await _http.PostAsJsonAsync($"{ApiUrl}/experiments", record, saveCts.Token);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var id = await resp.Content.ReadFromJsonAsync<Guid>(cancellationToken: saveCts.Token);
+                    return id != Guid.Empty ? id : record.Id;
+                }
+            }
+            catch
+            {
+                // Таймаут или сбой соединения с сервером — результат уже сохранен локально
+            }
+        }
+
+        return record.Id;
+    }
+
+    private void TrimCaches()
+    {
+        if (_localExperiments.Count > MaxHistoryCount)
+        {
+            _localExperiments.RemoveRange(MaxHistoryCount, _localExperiments.Count - MaxHistoryCount);
+        }
+
+        if (_localCache.Count > MaxCacheKeys)
+        {
+            var keys = _localCache.Keys.ToList();
+            for (int i = MaxCacheKeys; i < keys.Count; i++)
+            {
+                _localCache.Remove(keys[i]);
+            }
+        }
+
+        foreach (var key in _localCache.Keys.ToList())
+        {
+            var list = _localCache[key];
+            if (list.Count <= MaxPointsPerKey) continue;
+
+            var ordered = list.OrderBy(p => p.N).ToList();
+            var stride = (double)ordered.Count / MaxPointsPerKey;
+            var sampled = new List<BenchmarkPoint>(MaxPointsPerKey);
+            for (int i = 0; i < MaxPointsPerKey; i++)
+            {
+                sampled.Add(ordered[(int)(i * stride)]);
+            }
+            if (sampled[^1].N != ordered[^1].N)
+            {
+                sampled[^1] = ordered[^1];
+            }
+            _localCache[key] = sampled;
+        }
+    }
+
+    private void SchedulePersist()
+    {
+        _persistCts?.Cancel();
+        _persistCts?.Dispose();
+        _persistCts = new CancellationTokenSource();
+        var token = _persistCts.Token;
+        _ = PersistDebouncedAsync(token);
+    }
+
+    private async Task PersistDebouncedAsync(CancellationToken token)
+    {
         try
         {
-            var compactHistory = _localExperiments.Take(30).Select(exp => new ExperimentRecord
+            await Task.Delay(PersistDebounceMs, token);
+            if (token.IsCancellationRequested) return;
+            await PersistLocalAsync();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[HybridStorage] Persist failed: {ex.Message}");
+        }
+    }
+
+    private async Task PersistLocalAsync()
+    {
+        if (_persistQueued) return;
+        _persistQueued = true;
+        try
+        {
+            var compactHistory = _localExperiments.Take(MaxHistoryCount).Select(exp => new ExperimentRecord
             {
                 Id = exp.Id,
                 AlgorithmId = exp.AlgorithmId,
@@ -249,28 +341,14 @@ public class HybridExperimentStorageService : IExperimentStorageService
             await _js.InvokeVoidAsync("localStorage.setItem", "algolab_history", JsonSerializer.Serialize(compactHistory));
             await _js.InvokeVoidAsync("localStorage.setItem", "algolab_cache", JsonSerializer.Serialize(compactCache));
         }
-        catch { }
-
-        // 2. Если онлайн - сохраняем в PostgreSQL 18 с жестким таймаутом 3 секунды
-        if (Status == DatabaseStatus.ConnectedPostgreSql)
+        catch (Exception ex)
         {
-            try
-            {
-                using var saveCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-                var resp = await _http.PostAsJsonAsync($"{ApiUrl}/experiments", record, saveCts.Token);
-                if (resp.IsSuccessStatusCode)
-                {
-                    var id = await resp.Content.ReadFromJsonAsync<Guid>(cancellationToken: saveCts.Token);
-                    return id != Guid.Empty ? id : record.Id;
-                }
-            }
-            catch
-            {
-                // Таймаут или сбой соединения с сервером — результат уже сохранен локально
-            }
+            Console.WriteLine($"[HybridStorage] localStorage write: {ex.Message}");
         }
-
-        return record.Id;
+        finally
+        {
+            _persistQueued = false;
+        }
     }
 
     public async Task<List<ExperimentRecord>> GetHistoryAsync()
@@ -335,12 +413,7 @@ public class HybridExperimentStorageService : IExperimentStorageService
     {
         await InitializeAsync();
         _localExperiments.RemoveAll(x => x.Id == id);
-
-        try
-        {
-            await _js.InvokeVoidAsync("localStorage.setItem", "algolab_history", JsonSerializer.Serialize(_localExperiments.Take(50)));
-        }
-        catch { }
+        SchedulePersist();
 
         if (Status == DatabaseStatus.ConnectedPostgreSql)
         {
@@ -369,39 +442,96 @@ public class HybridExperimentStorageService : IExperimentStorageService
 
     public async Task<DbConnectionTestResult> TestDbConnectionAsync(DbConnectionConfig config)
     {
-        try
-        {
-            var resp = await _http.PostAsJsonAsync($"{ApiUrl}/database/test", config);
-            if (resp.IsSuccessStatusCode)
-            {
-                return await resp.Content.ReadFromJsonAsync<DbConnectionTestResult>() 
-                    ?? new DbConnectionTestResult { Success = false, Message = "Пустой ответ от сервера" };
-            }
-            return new DbConnectionTestResult { Success = false, Message = $"Ошибка HTTP {(int)resp.StatusCode}: {resp.ReasonPhrase}" };
-        }
-        catch (Exception ex)
-        {
-            return new DbConnectionTestResult { Success = false, Message = $"Сервер API недоступен: {ex.Message}" };
-        }
+        return await PostDbResultAsync($"{ApiUrl}/database/test", config, onConnected: null);
     }
 
     public async Task<DbConnectionTestResult> ApplyDbConnectionAsync(DbConnectionConfig config)
     {
+        return await PostDbResultAsync($"{ApiUrl}/database/apply", config, onConnected: result =>
+        {
+            Status = DatabaseStatus.ConnectedPostgreSql;
+            StatusMessage = $"PostgreSQL 18: {config.Database} ({config.Host}:{config.Port})";
+            OnStatusChanged?.Invoke();
+        });
+    }
+
+    /// <summary>
+    /// POST с чтением тела не-2xx (ProblemDetails / DbConnectionTestResult),
+    /// чтобы UI показывал реальную причину, а не голый «Ошибка HTTP 400».
+    /// </summary>
+    private async Task<DbConnectionTestResult> PostDbResultAsync(
+        string url,
+        DbConnectionConfig config,
+        Action<DbConnectionTestResult>? onConnected)
+    {
         try
         {
-            var resp = await _http.PostAsJsonAsync($"{ApiUrl}/database/apply", config);
-            if (resp.IsSuccessStatusCode)
+            var resp = await _http.PostAsJsonAsync(url, config);
+            var body = await resp.Content.ReadAsStringAsync();
+
+            if (string.IsNullOrWhiteSpace(body))
             {
-                var result = await resp.Content.ReadFromJsonAsync<DbConnectionTestResult>();
-                if (result?.Success == true)
+                if (resp.IsSuccessStatusCode)
                 {
-                    Status = DatabaseStatus.ConnectedPostgreSql;
-                    StatusMessage = $"PostgreSQL 18: {config.Database} ({config.Host}:{config.Port})";
-                    OnStatusChanged?.Invoke();
+                    return new DbConnectionTestResult { Success = false, Message = "Пустой ответ от сервера" };
                 }
-                return result ?? new DbConnectionTestResult { Success = false, Message = "Пустой ответ" };
+                return new DbConnectionTestResult
+                {
+                    Success = false,
+                    Message = $"Ошибка HTTP {(int)resp.StatusCode}: {resp.ReasonPhrase}"
+                };
             }
-            return new DbConnectionTestResult { Success = false, Message = $"Ошибка HTTP {(int)resp.StatusCode}: {resp.ReasonPhrase}" };
+
+            // 1) Ожидаемый контракт: DbConnectionTestResult
+            try
+            {
+                var result = JsonSerializer.Deserialize<DbConnectionTestResult>(
+                    body, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (result != null && (!string.IsNullOrEmpty(result.Message) || result.Success))
+                {
+                    if (result.Success)
+                    {
+                        onConnected?.Invoke(result);
+                    }
+                    return result;
+                }
+            }
+            catch { /* не DTO — пробуем ProblemDetails */ }
+
+            // 2) ProblemDetails / ValidationProblemDetails
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("title", out var titleEl) ||
+                    doc.RootElement.TryGetProperty("detail", out titleEl) ||
+                    doc.RootElement.TryGetProperty("message", out titleEl))
+                {
+                    return new DbConnectionTestResult
+                    {
+                        Success = false,
+                        Message = $"Ошибка HTTP {(int)resp.StatusCode}: {titleEl.GetString()}"
+                    };
+                }
+                if (doc.RootElement.TryGetProperty("errors", out _))
+                {
+                    return new DbConnectionTestResult
+                    {
+                        Success = false,
+                        Message = $"Ошибка HTTP {(int)resp.StatusCode}: {body}"
+                    };
+                }
+            }
+            catch { /* не JSON */ }
+
+            // 3) Прочий текст
+            var snippet = body.Length > 300 ? body[..300] + "..." : body;
+            return new DbConnectionTestResult
+            {
+                Success = false,
+                Message = resp.IsSuccessStatusCode
+                    ? snippet
+                    : $"Ошибка HTTP {(int)resp.StatusCode}: {snippet}"
+            };
         }
         catch (Exception ex)
         {

@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS experiments (
     r_squared DOUBLE PRECISION,
     cv DOUBLE PRECISION,
     total_duration_ms DOUBLE PRECISION DEFAULT 0,
-    config_hash VARCHAR(64)
+    config_hash VARCHAR(64),
+    storage_source VARCHAR(50)
 );
 
 ALTER TABLE experiments ADD COLUMN IF NOT EXISTS cv DOUBLE PRECISION;
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS storage_source VARCHAR(50);
 
 CREATE TABLE IF NOT EXISTS experiment_points (
     id UUID PRIMARY KEY,
@@ -51,8 +53,13 @@ CREATE TABLE IF NOT EXISTS benchmark_cache (
     step_count BIGINT DEFAULT 0,
     runs_json TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    is_outlier BOOLEAN DEFAULT FALSE,
+    theo_ms DOUBLE PRECISION,
     PRIMARY KEY (algorithm_id, n, m, config_hash)
 );
+
+ALTER TABLE benchmark_cache ADD COLUMN IF NOT EXISTS is_outlier BOOLEAN DEFAULT FALSE;
+ALTER TABLE benchmark_cache ADD COLUMN IF NOT EXISTS theo_ms DOUBLE PRECISION;
 
 CREATE INDEX IF NOT EXISTS idx_experiment_algo ON experiments(algorithm_id);
 CREATE INDEX IF NOT EXISTS idx_point_experiment ON experiment_points(experiment_id);

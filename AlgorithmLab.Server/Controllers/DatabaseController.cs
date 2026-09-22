@@ -69,9 +69,75 @@ public class DatabaseController : ControllerBase
     {
         if (config == null)
         {
-            return BadRequest(new DbConnectionTestResult { Success = false, Message = "Конфигурация не передана" });
+            // Единый контракт: 200 + Success=false (как и при ошибке подключения)
+            return Ok(new DbConnectionTestResult { Success = false, Message = "Конфигурация не передана" });
         }
 
+        var result = await TestConnectionCoreAsync(config);
+        if (result.Success)
+        {
+            return Ok(result);
+        }
+
+        _logger.LogWarning("Connection test failed for {Host}:{Port}/{Database}: {Message}",
+            config.Host, config.Port, config.Database, result.Message);
+        return Ok(result);
+    }
+
+    [HttpPost("apply")]
+    public async Task<ActionResult<DbConnectionTestResult>> ApplyConnection([FromBody] DbConnectionConfig config)
+    {
+        if (config == null)
+        {
+            return Ok(new DbConnectionTestResult { Success = false, Message = "Конфигурация не передана" });
+        }
+
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            // 1. Сначала тестируем (тот же code-path, что и ручной Test)
+            var testResult = await TestConnectionCoreAsync(config);
+            if (!testResult.Success)
+            {
+                _logger.LogWarning("Apply rejected — test failed for {Host}:{Port}/{Database}: {Message}",
+                    config.Host, config.Port, config.Database, testResult.Message);
+                return Ok(testResult);
+            }
+
+            // 2. Применяем
+            _connectionManager.SetConnection(config);
+
+            // 3. Создаём/дополняем схему (идемпотентно)
+            using var scope = _serviceProvider.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await EnsureSchemaAsync(db);
+
+            sw.Stop();
+            return Ok(new DbConnectionTestResult
+            {
+                Success = true,
+                Message = $"База данных {config.Database} успешно подключена и схема проверена",
+                ServerVersion = testResult.ServerVersion,
+                LatencyMs = testResult.LatencyMs
+            });
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _logger.LogError(ex, "Apply connection schema init failed for {Host}:{Port}/{Database}",
+                config.Host, config.Port, config.Database);
+            // Единый контракт: 200 + Success=false с понятным Message
+            return Ok(new DbConnectionTestResult
+            {
+                Success = false,
+                Message = $"Ошибка инициализации схемы: {ex.Message}",
+                LatencyMs = Math.Round(sw.Elapsed.TotalMilliseconds, 2)
+            });
+        }
+    }
+
+    private async Task<DbConnectionTestResult> TestConnectionCoreAsync(DbConnectionConfig config)
+    {
         var sw = Stopwatch.StartNew();
         try
         {
@@ -87,64 +153,44 @@ public class DatabaseController : ControllerBase
             string versionStr = versionObj?.ToString() ?? "PostgreSQL";
             if (versionStr.Length > 80) versionStr = versionStr[..80] + "...";
 
-            return Ok(new DbConnectionTestResult
+            return new DbConnectionTestResult
             {
                 Success = true,
                 Message = $"Успешное подключение к {config.Database} на {config.Host}:{config.Port}",
                 ServerVersion = versionStr,
                 LatencyMs = Math.Round(sw.Elapsed.TotalMilliseconds, 2)
-            });
+            };
         }
         catch (Exception ex)
         {
             sw.Stop();
-            _logger.LogWarning("Connection test failed: {Message}", ex.Message);
-            return Ok(new DbConnectionTestResult
+            return new DbConnectionTestResult
             {
                 Success = false,
                 Message = $"Ошибка подключения: {ex.Message}",
                 LatencyMs = Math.Round(sw.Elapsed.TotalMilliseconds, 2)
-            });
+            };
         }
     }
 
-    [HttpPost("apply")]
-    public async Task<ActionResult<DbConnectionTestResult>> ApplyConnection([FromBody] DbConnectionConfig config)
+    /// <summary>
+    /// Идемпотентная инициализация схемы: EnsureCreated + ALTER для колонок,
+    /// которых нет в init.sql, но есть в EF-модели.
+    /// </summary>
+    private static async Task EnsureSchemaAsync(AppDbContext db)
     {
-        if (config == null) return BadRequest("Конфигурация не передана");
+        // На пустой БД создаст полную схему; на существующей — no-op
+        await db.Database.EnsureCreatedAsync();
 
-        // 1. Сначала тестируем
-        var testResult = (await TestConnection(config)).Value;
-        if (testResult == null || !testResult.Success)
-        {
-            return BadRequest(testResult ?? new DbConnectionTestResult { Success = false, Message = "Тест подключения провален" });
-        }
-
-        try
-        {
-            // 2. Применяем
-            _connectionManager.SetConnection(config);
-
-            // 3. Создаем схему таблиц, если ее еще нет
-            using var scope = _serviceProvider.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await db.Database.EnsureCreatedAsync();
-
-            return Ok(new DbConnectionTestResult
-            {
-                Success = true,
-                Message = $"База данных {config.Database} успешно подключена и схема проверена",
-                ServerVersion = testResult.ServerVersion,
-                LatencyMs = testResult.LatencyMs
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new DbConnectionTestResult
-            {
-                Success = false,
-                Message = $"Ошибка инициализации схемы: {ex.Message}"
-            });
-        }
+        // Докручиваем колонки, появившиеся в EF позже init.sql
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS storage_source VARCHAR(50);");
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE experiments ADD COLUMN IF NOT EXISTS cv DOUBLE PRECISION;");
+        // B3: колонки кэша для outlier/theo при hit
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE benchmark_cache ADD COLUMN IF NOT EXISTS is_outlier BOOLEAN DEFAULT FALSE;");
+        await db.Database.ExecuteSqlRawAsync(
+            "ALTER TABLE benchmark_cache ADD COLUMN IF NOT EXISTS theo_ms DOUBLE PRECISION;");
     }
 }

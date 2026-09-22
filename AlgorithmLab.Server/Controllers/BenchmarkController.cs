@@ -1,8 +1,11 @@
+using System.Text.Json;
 using AlgorithmLab.Core.Algorithms;
 using AlgorithmLab.Core.Benchmark;
 using AlgorithmLab.Core.Dataset;
 using AlgorithmLab.Core.Models;
+using AlgorithmLab.Server.Data;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AlgorithmLab.Server.Controllers;
 
@@ -12,13 +15,19 @@ public class BenchmarkController : ControllerBase
 {
     private readonly IAlgorithmRegistry _registry;
     private readonly IMasterDatasetProvider _datasetProvider;
+    private readonly AppDbContext _db;
+    private readonly ILogger<BenchmarkController> _logger;
 
     public BenchmarkController(
         IAlgorithmRegistry registry,
-        IMasterDatasetProvider datasetProvider)
+        IMasterDatasetProvider datasetProvider,
+        AppDbContext db,
+        ILogger<BenchmarkController> logger)
     {
         _registry = registry;
         _datasetProvider = datasetProvider;
+        _db = db;
+        _logger = logger;
     }
 
     public class RunRequest
@@ -28,6 +37,8 @@ public class BenchmarkController : ControllerBase
         public int NMax { get; set; } = 1000;
         public int Step { get; set; } = 50;
         public int RunsPerN { get; set; } = 5;
+        public bool ForceRecalculate { get; set; }
+        public string? ConfigHash { get; set; }
     }
 
     [HttpPost("run")]
@@ -40,10 +51,21 @@ public class BenchmarkController : ControllerBase
         }
 
         var engine = new PrecisionBenchmarkEngine(_datasetProvider);
-        var result = await Task.Run(() => engine.RunExperimentAsync(
-            algo, req.NMin, req.NMax, req.Step, req.RunsPerN, cancellationToken: ct), ct);
+        var (getCached, cacheContext) = await CreateCacheLookupAsync(req.AlgorithmId, req.ConfigHash, req.ForceRecalculate, ct);
 
-        return Ok(result);
+        try
+        {
+            var result = await Task.Run(() => engine.RunExperimentAsync(
+                algo, req.NMin, req.NMax, req.Step, req.RunsPerN,
+                getCachedPoint: getCached, cancellationToken: ct), ct);
+
+            await UpsertCacheAsync(req.AlgorithmId, req.ConfigHash, result, ct);
+            return Ok(result);
+        }
+        finally
+        {
+            cacheContext?.Dispose();
+        }
     }
 
     [HttpGet("stream")]
@@ -53,6 +75,8 @@ public class BenchmarkController : ControllerBase
         [FromQuery] int nMax = 1000,
         [FromQuery] int step = 50,
         [FromQuery] int runsPerN = 5,
+        [FromQuery] bool forceRecalculate = false,
+        [FromQuery] string? configHash = null,
         CancellationToken ct = default)
     {
         var algo = _registry.GetById(algorithmId);
@@ -66,20 +90,37 @@ public class BenchmarkController : ControllerBase
         Response.Headers.CacheControl = "no-cache";
         Response.Headers.Connection = "keep-alive";
 
+        // configHash: клиентский DatasetConfig hash; иначе — серверный провайдер
+        var effectiveHash = string.IsNullOrWhiteSpace(configHash)
+            ? _datasetProvider.Config.ComputeHash()
+            : configHash;
+
         var engine = new PrecisionBenchmarkEngine(_datasetProvider);
+        var (getCached, cacheContext) = await CreateCacheLookupAsync(algorithmId, effectiveHash, forceRecalculate, ct);
 
-        var result = await engine.RunExperimentAsync(
-            algo, nMin, nMax, step, runsPerN,
-            onPointComputed: async pt =>
-            {
-                var json = System.Text.Json.JsonSerializer.Serialize(pt);
-                await Response.WriteAsync($"data: {json}\n\n", ct);
-                await Response.Body.FlushAsync(ct);
-            },
-            cancellationToken: ct
-        );
+        ExperimentRecord result;
+        try
+        {
+            result = await engine.RunExperimentAsync(
+                algo, nMin, nMax, step, runsPerN,
+                onPointComputed: async pt =>
+                {
+                    var json = JsonSerializer.Serialize(pt);
+                    await Response.WriteAsync($"data: {json}\n\n", ct);
+                    await Response.Body.FlushAsync(ct);
+                },
+                getCachedPoint: getCached,
+                cancellationToken: ct);
+        }
+        finally
+        {
+            cacheContext?.Dispose();
+        }
 
-        var finalJson = System.Text.Json.JsonSerializer.Serialize(result);
+        // Write-through: сохраняем промахи/итог в benchmark_cache сразу, не дожидаясь POST клиента
+        await UpsertCacheAsync(algorithmId, effectiveHash, result, ct);
+
+        var finalJson = JsonSerializer.Serialize(result);
         await Response.WriteAsync($"event: complete\ndata: {finalJson}\n\n", ct);
         await Response.Body.FlushAsync(ct);
     }
@@ -97,6 +138,119 @@ public class BenchmarkController : ControllerBase
             osDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
             frameworkDescription = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription
         });
+    }
+
+    /// <summary>
+    /// Bulk-load кэша один раз. При недоступной БД — null lookup, stream не падает.
+    /// </summary>
+    private async Task<(Func<int, Task<BenchmarkPoint?>>? Lookup, IDisposable? Ctx)> CreateCacheLookupAsync(
+        string algorithmId,
+        string? configHash,
+        bool forceRecalculate,
+        CancellationToken ct)
+    {
+        if (forceRecalculate || string.IsNullOrWhiteSpace(configHash))
+        {
+            return (null, null);
+        }
+
+        try
+        {
+            var hash = configHash!;
+            var entries = await _db.BenchmarkCache.AsNoTracking()
+                .Where(c => c.AlgorithmId == algorithmId && c.ConfigHash == hash)
+                .ToListAsync(ct);
+
+            if (entries.Count == 0)
+            {
+                return (null, null);
+            }
+
+            var byN = entries
+                .GroupBy(c => c.N)
+                .ToDictionary(g => g.Key, g => g.First());
+
+            Func<int, Task<BenchmarkPoint?>> lookup = n =>
+            {
+                if (!byN.TryGetValue(n, out var c))
+                {
+                    return Task.FromResult<BenchmarkPoint?>(null);
+                }
+
+                return Task.FromResult<BenchmarkPoint?>(new BenchmarkPoint
+                {
+                    N = c.N,
+                    M = c.M,
+                    AvgMs = c.AvgMs,
+                    MedianMs = c.MedianMs,
+                    TheoMs = c.TheoMs ?? 0,
+                    StepCount = c.StepCount,
+                    IsOutlier = c.IsOutlier,
+                    Runs = !string.IsNullOrEmpty(c.RunsJson)
+                        ? JsonSerializer.Deserialize<List<PointRun>>(c.RunsJson) ?? new()
+                        : new()
+                });
+            };
+
+            return (lookup, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Cache load failed (continuing without cache): {Message}", ex.Message);
+            return (null, null);
+        }
+    }
+
+    private async Task UpsertCacheAsync(
+        string algorithmId,
+        string? configHash,
+        ExperimentRecord result,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(configHash) || result?.Points == null)
+        {
+            return;
+        }
+
+        var hash = configHash!;
+        try
+        {
+            var nValues = result.Points.Select(p => p.N).ToList();
+            var existing = await _db.BenchmarkCache
+                .Where(c => c.AlgorithmId == algorithmId && c.ConfigHash == hash && nValues.Contains(c.N))
+                .ToListAsync(ct);
+
+            var byN = existing.ToDictionary(c => c.N);
+
+            foreach (var p in result.Points)
+            {
+                if (!byN.TryGetValue(p.N, out var entity))
+                {
+                    entity = new BenchmarkCacheEntity
+                    {
+                        AlgorithmId = algorithmId,
+                        N = p.N,
+                        M = p.M,
+                        ConfigHash = hash
+                    };
+                    _db.BenchmarkCache.Add(entity);
+                }
+
+                entity.AvgMs = p.AvgMs;
+                entity.MedianMs = p.MedianMs;
+                entity.StepCount = p.StepCount;
+                entity.IsOutlier = p.IsOutlier;
+                entity.TheoMs = p.TheoMs;
+                entity.RunsJson = JsonSerializer.Serialize(p.Runs);
+                entity.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Cache write-through failed: {Message}", ex.Message);
+        }
     }
 
     private static string DetectCpuModel()
