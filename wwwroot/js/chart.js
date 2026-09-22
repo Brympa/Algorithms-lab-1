@@ -61,6 +61,10 @@ window.initLiveChart = (canvasId, title, yAxisLabel, isStepCounting) => {
                 responsive: true,
                 maintainAspectRatio: false,
                 animation: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
                 plugins: {
                     title: {
                         display: !!title,
