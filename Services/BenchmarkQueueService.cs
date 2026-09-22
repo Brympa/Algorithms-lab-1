@@ -1,9 +1,16 @@
+using System.Net.Http.Json;
 using AlgorithmLab.Core.Algorithms;
 using AlgorithmLab.Core.Benchmark;
 using AlgorithmLab.Core.Dataset;
 using AlgorithmLab.Core.Models;
 
 namespace AlgorithmLab.Services;
+
+public enum ExecutionEngineMode
+{
+    ServerNative,
+    BrowserWasm
+}
 
 public enum QueueItemStatus
 {
@@ -45,10 +52,13 @@ public class BenchmarkQueueService
     private readonly PrecisionBenchmarkEngine _benchmarkEngine;
     private readonly IMasterDatasetProvider _datasetProvider;
     private readonly IExperimentStorageService _storage;
+    private readonly HttpClient _http;
     private readonly List<BenchmarkQueueItem> _queue = new();
     private readonly object _lock = new();
     private CancellationTokenSource? _currentCts;
     private bool _isProcessing = false;
+
+    public ExecutionEngineMode EngineMode { get; set; } = ExecutionEngineMode.ServerNative;
 
     public IReadOnlyList<BenchmarkQueueItem> Items
     {
@@ -69,14 +79,53 @@ public class BenchmarkQueueService
     public event Action<BenchmarkQueueItem, BenchmarkPoint>? OnPointComputed;
     public event Action<BenchmarkQueueItem>? OnItemCompleted;
 
+    public string DetectedCpuName { get; private set; } = "Host CPU";
+    public string DetectedCpuFullName { get; private set; } = "";
+    public int DetectedCores { get; private set; } = Environment.ProcessorCount;
+
+    public class HostInfoResponse
+    {
+        public string? CpuModel { get; set; }
+        public string? ShortCpuName { get; set; }
+        public int ProcessorCount { get; set; }
+        public string? OsDescription { get; set; }
+        public string? FrameworkDescription { get; set; }
+    }
+
+    public async Task RefreshHostInfoAsync()
+    {
+        try
+        {
+            var info = await _http.GetFromJsonAsync<HostInfoResponse>("http://localhost:5000/api/benchmark/info");
+            if (info != null && !string.IsNullOrWhiteSpace(info.ShortCpuName))
+            {
+                DetectedCpuName = info.ShortCpuName;
+                DetectedCpuFullName = info.CpuModel ?? info.ShortCpuName;
+                if (info.ProcessorCount > 0)
+                {
+                    DetectedCores = info.ProcessorCount;
+                }
+                OnQueueChanged?.Invoke();
+            }
+        }
+        catch
+        {
+            // Fallback если сервер офлайн
+        }
+    }
+
     public BenchmarkQueueService(
         PrecisionBenchmarkEngine benchmarkEngine,
         IMasterDatasetProvider datasetProvider,
-        IExperimentStorageService storage)
+        IExperimentStorageService storage,
+        HttpClient http)
     {
         _benchmarkEngine = benchmarkEngine;
         _datasetProvider = datasetProvider;
         _storage = storage;
+        _http = http;
+
+        _ = RefreshHostInfoAsync();
     }
 
     public Guid Enqueue(
@@ -179,26 +228,69 @@ public class BenchmarkQueueService
                 try
                 {
                     string configHash = _datasetProvider.Config.ComputeHash();
+                    ExperimentRecord? result = null;
 
-                    var result = await _benchmarkEngine.RunExperimentAsync(
-                        nextItem.Algorithm,
-                        nextItem.NMin,
-                        nextItem.NMax,
-                        nextItem.Step,
-                        nextItem.RunsPerN,
-                        async pt =>
+                    // 1. Попытка нативного выполнения на сервере (ASP.NET Core / Multi-core CPU), если выбран ServerNative
+                    if (EngineMode == ExecutionEngineMode.ServerNative)
+                    {
+                        try
                         {
-                            nextItem.CurrentProgressN = pt.N;
-                            if (pt.IsOutlier) nextItem.OutliersCount++;
-                            OnPointComputed?.Invoke(nextItem, pt);
-                            await Task.Yield();
-                        },
-                        getCachedPoint: nextItem.ForceRecalculate ? null : async n =>
+                            var reqBody = new
+                            {
+                                algorithmId = nextItem.Algorithm.Id,
+                                nMin = nextItem.NMin,
+                                nMax = nextItem.NMax,
+                                step = nextItem.Step,
+                                runsPerN = nextItem.RunsPerN
+                            };
+
+                            var resp = await _http.PostAsJsonAsync("http://localhost:5000/api/benchmark/run", reqBody, _currentCts.Token);
+                            if (resp.IsSuccessStatusCode)
+                            {
+                                result = await resp.Content.ReadFromJsonAsync<ExperimentRecord>(cancellationToken: _currentCts.Token);
+                                if (result != null)
+                                {
+                                    // Потоковое оповещение UI о полученных точках
+                                    foreach (var pt in result.Points)
+                                    {
+                                        nextItem.CurrentProgressN = pt.N;
+                                        if (pt.IsOutlier) nextItem.OutliersCount++;
+                                        OnPointComputed?.Invoke(nextItem, pt);
+                                        await Task.Yield();
+                                    }
+                                }
+                            }
+                        }
+                        catch
                         {
-                            return await _storage.GetCachedPointAsync(nextItem.Algorithm.Id, n, configHash);
-                        },
-                        cancellationToken: _currentCts.Token
-                    );
+                            // Если сервер недоступен, бесшовно переключаемся на локальный движок WASM
+                            result = null;
+                        }
+                    }
+
+                    // 2. Локальное выполнение в WebAssembly (с кооперативной уступкой потока UI), если сервер не использовался
+                    if (result == null)
+                    {
+                        result = await _benchmarkEngine.RunExperimentAsync(
+                            nextItem.Algorithm,
+                            nextItem.NMin,
+                            nextItem.NMax,
+                            nextItem.Step,
+                            nextItem.RunsPerN,
+                            async pt =>
+                            {
+                                nextItem.CurrentProgressN = pt.N;
+                                if (pt.IsOutlier) nextItem.OutliersCount++;
+                                OnPointComputed?.Invoke(nextItem, pt);
+                                await Task.Yield();
+                            },
+                            getCachedPoint: nextItem.ForceRecalculate ? null : async n =>
+                            {
+                                return await _storage.GetCachedPointAsync(nextItem.Algorithm.Id, n, configHash);
+                            },
+                            cancellationToken: _currentCts.Token
+                        );
+                    }
 
                     nextItem.Result = result;
                     nextItem.TotalDurationMs = result.TotalDurationMs;

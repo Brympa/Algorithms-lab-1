@@ -126,7 +126,7 @@ public class PrecisionBenchmarkEngine
                 else
                 {
                     // Эмпирический замер времени с изоляцией аллокаций
-                    pt = MeasureTimeForN(algorithm, n, runsPerN);
+                    pt = await MeasureTimeForNAsync(algorithm, n, runsPerN, cancellationToken);
                 }
             }
 
@@ -215,7 +215,7 @@ public class PrecisionBenchmarkEngine
         return points;
     }
 
-    private BenchmarkPoint MeasureTimeForN(IAlgorithm algorithm, int n, int runsPerN)
+    private async Task<BenchmarkPoint> MeasureTimeForNAsync(IAlgorithm algorithm, int n, int runsPerN, CancellationToken cancellationToken = default)
     {
         int iterations = CalculateIterations(algorithm.Complexity, n);
         var runs = new List<PointRun>(runsPerN);
@@ -225,7 +225,7 @@ public class PrecisionBenchmarkEngine
         {
             for (int r = 0; r < runsPerN; r++)
             {
-                // Заранее готовим массив копий для всех итераций
+                cancellationToken.ThrowIfCancellationRequested();
                 var copies = new double[iterations][];
                 for (int it = 0; it < iterations; it++)
                 {
@@ -245,6 +245,7 @@ public class PrecisionBenchmarkEngine
                 double perIterationMs = totalMs / iterations;
 
                 runs.Add(new PointRun { RunIndex = r + 1, ElapsedMs = perIterationMs });
+                await Task.Yield();
             }
         }
         else if (algorithm is IVectorAlgorithm vecAlgo)
@@ -253,6 +254,7 @@ public class PrecisionBenchmarkEngine
 
             for (int r = 0; r < runsPerN; r++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 GC.Collect(0, GCCollectionMode.Optimized);
 
                 double sink = 0.0;
@@ -268,6 +270,7 @@ public class PrecisionBenchmarkEngine
                 double perIterationMs = totalMs / iterations;
 
                 runs.Add(new PointRun { RunIndex = r + 1, ElapsedMs = perIterationMs });
+                await Task.Yield();
             }
         }
         else if (algorithm is IMatrixAlgorithm matAlgo)
@@ -276,6 +279,7 @@ public class PrecisionBenchmarkEngine
 
             for (int r = 0; r < runsPerN; r++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 GC.Collect(0, GCCollectionMode.Optimized);
 
                 long start = Stopwatch.GetTimestamp();
@@ -289,6 +293,7 @@ public class PrecisionBenchmarkEngine
                 double perIterationMs = totalMs / iterations;
 
                 runs.Add(new PointRun { RunIndex = r + 1, ElapsedMs = perIterationMs });
+                await Task.Yield();
             }
         }
         else if (algorithm is IStringSearchAlgorithm strAlgo)
@@ -297,6 +302,7 @@ public class PrecisionBenchmarkEngine
 
             for (int r = 0; r < runsPerN; r++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 GC.Collect(0, GCCollectionMode.Optimized);
 
                 long start = Stopwatch.GetTimestamp();
@@ -310,6 +316,7 @@ public class PrecisionBenchmarkEngine
                 double perIterationMs = totalMs / iterations;
 
                 runs.Add(new PointRun { RunIndex = r + 1, ElapsedMs = perIterationMs });
+                await Task.Yield();
             }
         }
 

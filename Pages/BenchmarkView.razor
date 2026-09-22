@@ -132,6 +132,60 @@
                 </div>
 
                 <div class="btn-actions-group">
+                    <!-- Селектор движка выполнения в едином стиле Cockpit / Liquid Glass -->
+                    <div class="engine-dropdown-wrapper">
+                        <button type="button" 
+                                class="engine-dropdown-trigger @(isEngineDropdownOpen ? "active" : "")" 
+                                @onclick="() => isEngineDropdownOpen = !isEngineDropdownOpen"
+                                title="Выбор движка вычислений">
+                            <SvgIcon Name="cpu" Size="15" Class="icon-cyan" />
+                            <span class="engine-dropdown-label">Движок:</span>
+                            <div class="engine-current-badge">
+                                <span class="status-dot @(QueueService.EngineMode == ExecutionEngineMode.ServerNative ? "online pulsing" : "local")"></span>
+                                <span class="engine-current-text">
+                                    @(QueueService.EngineMode == ExecutionEngineMode.ServerNative ? $"Сервер Native ({QueueService.DetectedCpuName})" : "Браузер WASM (Локально)")
+                                </span>
+                            </div>
+                            <SvgIcon Name="@(isEngineDropdownOpen ? "chevron-up" : "chevron-down")" Size="13" Class="engine-chevron" />
+                        </button>
+
+                        @if (isEngineDropdownOpen)
+                        {
+                            <div class="engine-dropdown-backdrop" @onclick="() => isEngineDropdownOpen = false"></div>
+                            <div class="engine-dropdown-menu liquid-glass">
+                                <div class="engine-dropdown-item @(QueueService.EngineMode == ExecutionEngineMode.ServerNative ? "selected" : "")"
+                                     @onclick="() => SelectEngine(ExecutionEngineMode.ServerNative)">
+                                    <div class="engine-item-header">
+                                        <span class="status-dot online pulsing"></span>
+                                        <span class="engine-item-title">Сервер Native (.NET 10 / @QueueService.DetectedCpuName)</span>
+                                        @if (QueueService.EngineMode == ExecutionEngineMode.ServerNative)
+                                        {
+                                            <SvgIcon Name="check" Size="14" Class="icon-emerald" />
+                                        }
+                                    </div>
+                                    <div class="engine-item-desc">
+                                        @(string.IsNullOrEmpty(QueueService.DetectedCpuFullName) ? "Многопоточный расчет на бэкенде, 0% нагрузки на UI браузера" : $"{QueueService.DetectedCpuFullName} ({QueueService.DetectedCores} потоков), 0% нагрузки на UI")
+                                    </div>
+                                </div>
+
+                                <div class="engine-dropdown-item @(QueueService.EngineMode == ExecutionEngineMode.BrowserWasm ? "selected" : "")"
+                                     @onclick="() => SelectEngine(ExecutionEngineMode.BrowserWasm)">
+                                    <div class="engine-item-header">
+                                        <span class="status-dot local"></span>
+                                        <span class="engine-item-title">Браузер WASM (Локально)</span>
+                                        @if (QueueService.EngineMode == ExecutionEngineMode.BrowserWasm)
+                                        {
+                                            <SvgIcon Name="check" Size="14" Class="icon-emerald" />
+                                        }
+                                    </div>
+                                    <div class="engine-item-desc">
+                                        Автономное выполнение в WebAssembly с кооперативным расписанием (Task.Yield)
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
                     @if (!QueueService.IsRunning)
                     {
                         <button class="btn-primary" @onclick="StartBenchmark">
@@ -153,71 +207,85 @@
                 </div>
             </div>
 
-            <!-- Интерактивная панель очереди выполнения (если есть задачи) -->
+            <!-- Интерактивная панель очереди выполнения (сворачиваемая) -->
             @if (QueueService.Items.Count > 0)
             {
-                <div class="chart-panel liquid-glass" style="padding: 0.85rem 1.25rem;">
-                    <div class="chart-header" style="margin-bottom: 0.6rem; align-items: center;">
+                <div class="chart-panel liquid-glass" style="padding: 0.75rem 1.25rem;">
+                    <div class="chart-header" style="margin-bottom: @(isQueueExpanded ? "0.6rem" : "0"); align-items: center; cursor: pointer;" @onclick="() => isQueueExpanded = !isQueueExpanded">
                         <div style="display: flex; align-items: center; gap: 0.6rem;">
                             <span class="status-dot @(QueueService.IsRunning ? "online pulsing" : "local")"></span>
                             <h3 style="font-size: 0.92rem; font-weight: 600; margin: 0;">Очередь задач выполнения</h3>
                             <span class="brand-badge" style="font-size: 0.72rem;">
                                 @QueueService.Items.Count(x => x.Status == QueueItemStatus.Queued) в очереди
                             </span>
+                            @if (!isQueueExpanded && QueueService.CurrentRunningItem != null)
+                            {
+                                <span class="source-badge pg" style="color: var(--accent-cyan); font-size: 0.72rem;">
+                                    Выполняется: @QueueService.CurrentRunningItem.Algorithm.Name (@QueueService.CurrentRunningItem.CurrentProgressN / @QueueService.CurrentRunningItem.NMax)
+                                </span>
+                            }
                         </div>
-                        @if (QueueService.Items.Any(x => x.Status == QueueItemStatus.Queued))
-                        {
-                            <button class="btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" @onclick="QueueService.ClearQueue">
-                                <SvgIcon Name="trash" Size="13" />
-                                <span>Очистить очередь</span>
+                        <div style="display: flex; align-items: center; gap: 0.5rem;" @onclick:stopPropagation="true">
+                            @if (QueueService.Items.Any(x => x.Status == QueueItemStatus.Queued))
+                            {
+                                <button class="btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.6rem;" @onclick="QueueService.ClearQueue">
+                                    <SvgIcon Name="trash" Size="13" />
+                                    <span>Очистить</span>
+                                </button>
+                            }
+                            <button class="filter-reset-btn" style="padding: 0.2rem 0.5rem;" @onclick="() => isQueueExpanded = !isQueueExpanded" title="@(isQueueExpanded ? "Свернуть список" : "Развернуть список")">
+                                <SvgIcon Name="@(isQueueExpanded ? "chevron-up" : "chevron-down")" Size="15" />
                             </button>
-                        }
+                        </div>
                     </div>
 
-                    <div style="display: flex; flex-direction: column; gap: 0.45rem;">
-                        @foreach (var item in QueueService.Items.TakeLast(6))
-                        {
-                            bool isCurrent = item.Status == QueueItemStatus.Running;
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 0.75rem; background: rgba(10, 15, 29, 0.6); border-radius: var(--radius-sm); border: 1px solid @(isCurrent ? "rgba(56, 189, 248, 0.4)" : "rgba(255, 255, 255, 0.05)");">
-                                <div style="display: flex; align-items: center; gap: 0.6rem;">
-                                    @if (isCurrent)
-                                    {
-                                        <span class="status-dot pulsing online"></span>
-                                    }
-                                    <span style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary);">@item.Algorithm.Name</span>
-                                    <span class="mono-cell" style="font-size: 0.75rem; color: var(--text-muted);">
-                                        N: @item.NMin..@item.NMax (шаг @item.Step)
-                                    </span>
-                                </div>
+                    @if (isQueueExpanded)
+                    {
+                        <div style="display: flex; flex-direction: column; gap: 0.45rem; margin-top: 0.5rem;">
+                            @foreach (var item in QueueService.Items.TakeLast(6))
+                            {
+                                bool isCurrent = item.Status == QueueItemStatus.Running;
+                                <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.45rem 0.75rem; background: rgba(10, 15, 29, 0.6); border-radius: var(--radius-sm); border: 1px solid @(isCurrent ? "rgba(56, 189, 248, 0.4)" : "rgba(255, 255, 255, 0.05)");">
+                                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                        @if (isCurrent)
+                                        {
+                                            <span class="status-dot pulsing online"></span>
+                                        }
+                                        <span style="font-weight: 600; font-size: 0.82rem; color: var(--text-primary);">@item.Algorithm.Name</span>
+                                        <span class="mono-cell" style="font-size: 0.75rem; color: var(--text-muted);">
+                                            N: @item.NMin..@item.NMax (шаг @item.Step)
+                                        </span>
+                                    </div>
 
-                                <div style="display: flex; align-items: center; gap: 0.6rem;">
-                                    @if (item.Status == QueueItemStatus.Running)
-                                    {
-                                        <span class="source-badge pg" style="color: var(--accent-cyan);">
-                                            Выполняется (@item.CurrentProgressN / @item.NMax)
-                                        </span>
-                                    }
-                                    else if (item.Status == QueueItemStatus.Queued)
-                                    {
-                                        <span class="source-badge local">Ожидает</span>
-                                        <button class="filter-reset-btn" style="padding: 0.15rem 0.4rem;" @onclick="() => QueueService.RemoveItem(item.Id)">
-                                            <SvgIcon Name="x" Size="12" />
-                                        </button>
-                                    }
-                                    else if (item.Status == QueueItemStatus.Completed)
-                                    {
-                                        <span class="source-badge pg" style="color: var(--accent-emerald);">
-                                            Готово (@FormatDuration(item.TotalDurationMs))
-                                        </span>
-                                    }
-                                    else if (item.Status == QueueItemStatus.Canceled)
-                                    {
-                                        <span class="source-badge local" style="color: var(--accent-ruby);">Отменено</span>
-                                    }
+                                    <div style="display: flex; align-items: center; gap: 0.6rem;">
+                                        @if (item.Status == QueueItemStatus.Running)
+                                        {
+                                            <span class="source-badge pg" style="color: var(--accent-cyan);">
+                                                Выполняется (@item.CurrentProgressN / @item.NMax)
+                                            </span>
+                                        }
+                                        else if (item.Status == QueueItemStatus.Queued)
+                                        {
+                                            <span class="source-badge local">Ожидает</span>
+                                            <button class="filter-reset-btn" style="padding: 0.15rem 0.4rem;" @onclick="() => QueueService.RemoveItem(item.Id)">
+                                                <SvgIcon Name="x" Size="12" />
+                                            </button>
+                                        }
+                                        else if (item.Status == QueueItemStatus.Completed)
+                                        {
+                                            <span class="source-badge pg" style="color: var(--accent-emerald);">
+                                                Готово (@FormatDuration(item.TotalDurationMs))
+                                            </span>
+                                        }
+                                        else if (item.Status == QueueItemStatus.Canceled)
+                                        {
+                                            <span class="source-badge local" style="color: var(--accent-ruby);">Отменено</span>
+                                        }
+                                    </div>
                                 </div>
-                            </div>
-                        }
-                    </div>
+                            }
+                        </div>
+                    }
                 </div>
             }
 
@@ -320,6 +388,14 @@
     private int step = 50;
     private int runsPerN = 5;
     private bool forceRecalculate = false;
+    private bool isQueueExpanded = true;
+    private bool isEngineDropdownOpen = false;
+
+    private void SelectEngine(ExecutionEngineMode mode)
+    {
+        QueueService.EngineMode = mode;
+        isEngineDropdownOpen = false;
+    }
 
     private int currentProgressN = 0;
     private int outliersCount = 0;

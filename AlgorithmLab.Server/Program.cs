@@ -1,3 +1,5 @@
+using AlgorithmLab.Core.Algorithms;
+using AlgorithmLab.Core.Dataset;
 using AlgorithmLab.Server.Data;
 using AlgorithmLab.Server.Services;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +8,9 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddSingleton<IAlgorithmRegistry, AlgorithmRegistry>();
+builder.Services.AddSingleton<IMasterDatasetProvider, MasterDatasetProvider>();
 
 var connMgr = new DatabaseConnectionManager();
 builder.Services.AddSingleton(connMgr);

@@ -281,6 +281,8 @@ body {
 
 /* Parameters Control Bar (Cockpit Density) */
 .controls-cockpit {
+    position: relative;
+    z-index: 40;
     padding: 1rem 1.4rem;
     display: flex;
     flex-wrap: wrap;
@@ -1072,4 +1074,184 @@ input[type="number"].param-input::-webkit-outer-spin-button {
     background: rgba(56, 189, 248, 0.12) !important;
     border-color: var(--accent-cyan) !important;
     color: var(--accent-cyan) !important;
-}
+}
+
+/* ==========================================================================
+   Global Dark Select & Option Styling
+   ========================================================================== */
+select, select.param-input, select.form-input {
+    background-color: var(--bg-input) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-subtle) !important;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-ui);
+    cursor: pointer;
+    outline: none;
+    transition: all 0.15s ease;
+}
+
+select:focus, select.param-input:focus, select.form-input:focus {
+    border-color: var(--accent-cyan) !important;
+    box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.3) !important;
+}
+
+select option {
+    background-color: #0b1329 !important;
+    color: #f8fafc !important;
+    padding: 0.5rem 0.75rem;
+    font-family: var(--font-ui);
+}
+
+select option:hover,
+select option:focus,
+select option:checked {
+    background-color: #0284c7 !important;
+    color: #ffffff !important;
+}
+
+/* ==========================================================================
+   Engine Custom Dropdown (Cockpit Liquid Glass)
+   ========================================================================== */
+.engine-dropdown-wrapper {
+    position: relative;
+    display: inline-block;
+    z-index: 60;
+}
+
+.engine-dropdown-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    border-radius: var(--radius-sm);
+    padding: 0.35rem 0.7rem;
+    cursor: pointer;
+    color: var(--text-primary);
+    transition: all 0.15s ease;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+.engine-dropdown-trigger:hover,
+.engine-dropdown-trigger.active {
+    background: rgba(30, 41, 59, 0.85);
+    border-color: rgba(56, 189, 248, 0.4);
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.15);
+}
+
+.engine-dropdown-label {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.engine-current-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: rgba(10, 15, 29, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+}
+
+.engine-current-text {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.engine-chevron {
+    color: var(--text-muted);
+    transition: transform 0.2s ease;
+}
+
+.engine-dropdown-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 999;
+}
+
+.engine-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 360px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.5rem;
+    background: rgba(10, 15, 29, 0.98);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: var(--radius-md);
+    box-shadow: 
+        0 20px 45px -10px rgba(0, 0, 0, 0.95),
+        0 0 16px rgba(56, 189, 248, 0.15),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    animation: fadeInDown 0.15s ease-out;
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.engine-dropdown-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.12s ease;
+}
+
+.engine-dropdown-item:hover {
+    background: rgba(56, 189, 248, 0.1);
+    border-color: rgba(56, 189, 248, 0.25);
+}
+
+.engine-dropdown-item.selected {
+    background: rgba(56, 189, 248, 0.14);
+    border-color: rgba(56, 189, 248, 0.4);
+}
+
+.engine-item-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.engine-item-title {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    flex: 1;
+}
+
+.engine-item-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    padding-left: 1.1rem;
+    line-height: 1.35;
+}
+
+.icon-emerald {
+    color: var(--accent-emerald);
+}
+

@@ -218,5 +218,37 @@ public class CoreTests
         Assert.Contains("Password=secret_password", connStr);
         Assert.Contains("SSL Mode=Require", connStr);
     }
+
+    [Fact]
+    public async Task BenchmarkEngine_Cancellation_And_CooperativeYielding_Works()
+    {
+        var provider = new MasterDatasetProvider();
+        var engine = new AlgorithmLab.Core.Benchmark.PrecisionBenchmarkEngine(provider);
+        var poly = new NaivePolynomialAlgorithm();
+
+        using var cts = new CancellationTokenSource();
+        int pointsReceived = 0;
+
+        // Отменяем расчет сразу после получения первой точки
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await engine.RunExperimentAsync(
+                poly,
+                nMin: 20,
+                nMax: 500,
+                step: 20,
+                runsPerN: 3,
+                onPointComputed: pt =>
+                {
+                    pointsReceived++;
+                    cts.Cancel(); // Мгновенная отмена
+                    return Task.CompletedTask;
+                },
+                cancellationToken: cts.Token
+            );
+        });
+
+        Assert.True(pointsReceived >= 1, "At least one point must be computed before cancellation takes effect");
+    }
 }
 
