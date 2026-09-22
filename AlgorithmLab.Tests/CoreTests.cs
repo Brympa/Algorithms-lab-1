@@ -92,19 +92,82 @@ public class CoreTests
     }
 
     [Fact]
-    public void KmpAlgorithm_MatchesNaiveStringSearch()
+    public void PancakeSort_SortsCorrectly()
     {
-        var kmp = new KmpAlgorithm();
-        var naive = new NaiveStringSearchAlgorithm();
+        var algo = new PancakeSortAlgorithm();
+        double[] array = { 67.2, 12.5, 89.1, 0.4, 45.3, -5.2, 12.5, 100.0 };
+        double[] expected = (double[])array.Clone();
+        Array.Sort(expected);
 
-        string text = "ACGTACGTGACGTACGTACGT";
-        string pattern = "TGAC";
+        algo.Execute(array);
 
-        int idxKmp = kmp.Execute(text, pattern);
-        int idxNaive = naive.Execute(text, pattern);
+        Assert.Equal(expected, array);
+    }
 
-        Assert.True(idxKmp >= 0);
-        Assert.Equal(idxNaive, idxKmp);
+    [Fact]
+    public void CocktailShakerSort_SortsCorrectly()
+    {
+        var algo = new CocktailShakerSortAlgorithm();
+        double[] array = { 45.0, 10.0, 78.5, 3.2, 99.9, -12.0, 10.0, 50.1 };
+        double[] expected = (double[])array.Clone();
+        Array.Sort(expected);
+
+        algo.Execute(array);
+
+        Assert.Equal(expected, array);
+    }
+
+    [Fact]
+    public void CombSort_SortsCorrectly()
+    {
+        var algo = new CombSortAlgorithm();
+        double[] array = { 88.0, 12.0, 4.0, 99.0, 23.0, 1.0, -10.0, 4.0, 105.0 };
+        double[] expected = (double[])array.Clone();
+        Array.Sort(expected);
+
+        algo.Execute(array);
+
+        Assert.Equal(expected, array);
+    }
+
+    [Fact]
+    public void ApproximationEngine_CalculatesCV_ForO1()
+    {
+        // 10 точек с небольшим разбросом вокруг среднего 0.0050 мс
+        var points = new List<BenchmarkPoint>
+        {
+            new() { N = 100, AvgMs = 0.0050 },
+            new() { N = 200, AvgMs = 0.0051 },
+            new() { N = 300, AvgMs = 0.0049 },
+            new() { N = 400, AvgMs = 0.0050 },
+            new() { N = 500, AvgMs = 0.0052 }
+        };
+
+        var fit = ApproximationEngine.FitCurve(points, ComplexityType.O1);
+
+        Assert.NotNull(fit.CV);
+        // Вариация должна быть строго положительной и менее 10%
+        Assert.InRange(fit.CV.Value, 0.01, 10.0);
+    }
+
+    [Fact]
+    public async Task BenchmarkEngine_Guarantees_NMax_Inclusion()
+    {
+        var provider = new MasterDatasetProvider();
+        var engine = new AlgorithmLab.Core.Benchmark.PrecisionBenchmarkEngine(provider);
+        var algo = new SumFunctionAlgorithm();
+
+        // 100 .. 1000 с шагом 300: 100, 400, 700, 1000 (1000 кратен)
+        // 100 .. 10000 с шагом 500: 100, 600, ..., 9600 -> должен включить 10000!
+        var result = await engine.RunExperimentAsync(
+            algo,
+            nMin: 100,
+            nMax: 10000,
+            step: 500,
+            runsPerN: 1
+        );
+
+        Assert.Equal(10000, result.Points.Last().N);
     }
 
     [Fact]
@@ -249,6 +312,82 @@ public class CoreTests
         });
 
         Assert.True(pointsReceived >= 1, "At least one point must be computed before cancellation takes effect");
+    }
+
+    [Fact]
+    public void OutlierDetector_DetectsConstantFunctionSpikes_And_ApproximationExcludesOutliers()
+    {
+        // Базовый уровень 0.000020 мс для O(1)
+        var points = new List<BenchmarkPoint>();
+        for (int i = 1; i <= 30; i++)
+        {
+            points.Add(new BenchmarkPoint
+            {
+                N = i * 10,
+                AvgMs = 0.000020 + (i % 3) * 0.000001,
+                MedianMs = 0.000020
+            });
+        }
+
+        // Добавляем 4 явных выброса (всплески ОС / сборки мусора до 0.000080 - 0.000120 мс)
+        points[5].AvgMs = 0.000095;
+        points[5].MedianMs = 0.000095;
+        points[12].AvgMs = 0.000120;
+        points[12].MedianMs = 0.000120;
+        points[20].AvgMs = 0.000080;
+        points[20].MedianMs = 0.000080;
+        points[27].AvgMs = 0.000110;
+        points[27].MedianMs = 0.000110;
+
+        OutlierDetector.DetectPointOutliers(points, ComplexityType.O1);
+
+        Assert.True(points[5].IsOutlier, "Point 5 spike (0.000095 ms) must be flagged as outlier");
+        Assert.True(points[12].IsOutlier, "Point 12 spike (0.000120 ms) must be flagged as outlier");
+        Assert.True(points[20].IsOutlier, "Point 20 spike (0.000080 ms) must be flagged as outlier");
+        Assert.True(points[27].IsOutlier, "Point 27 spike (0.000110 ms) must be flagged as outlier");
+
+        // Не-выбросы не должны быть ложно помечены
+        Assert.False(points[0].IsOutlier, "Normal baseline point must not be outlier");
+        Assert.False(points[10].IsOutlier, "Normal baseline point must not be outlier");
+
+        // Аппроксимация должна игнорировать выбросы при расчете C
+        var fit = ApproximationEngine.FitCurve(points, ComplexityType.O1);
+        Assert.InRange(fit.C, 0.000019, 0.000023);
+    }
+
+    [Fact]
+    public void IsOnlinePointOutlier_FlagsIncomingSpikes_AgainstRunningBaseline()
+    {
+        var runningPoints = new List<BenchmarkPoint>();
+        for (int i = 1; i <= 10; i++)
+        {
+            runningPoints.Add(new BenchmarkPoint
+            {
+                N = i * 10,
+                AvgMs = 0.000020,
+                MedianMs = 0.000020,
+                IsOutlier = false
+            });
+        }
+
+        var spikePoint = new BenchmarkPoint
+        {
+            N = 110,
+            AvgMs = 0.000095,
+            MedianMs = 0.000095
+        };
+
+        bool isSpike = OutlierDetector.IsOnlinePointOutlier(spikePoint, runningPoints, ComplexityType.O1);
+        Assert.True(isSpike, "Incoming spike of 0.000095 ms over 0.000020 ms baseline must be detected online");
+
+        var normalPoint = new BenchmarkPoint
+        {
+            N = 120,
+            AvgMs = 0.000021,
+            MedianMs = 0.000020
+        };
+        bool isNormal = OutlierDetector.IsOnlinePointOutlier(normalPoint, runningPoints, ComplexityType.O1);
+        Assert.False(isNormal, "Normal point close to baseline must not be detected as outlier");
     }
 }
 

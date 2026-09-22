@@ -103,6 +103,9 @@ window.initLiveChart = (canvasId, title, yAxisLabel, isStepCounting) => {
                         grid: { color: 'rgba(255, 255, 255, 0.04)' }
                     },
                     y: {
+                        beginAtZero: true,
+                        min: 0,
+                        suggestedMin: 0,
                         title: { display: true, text: yAxisLabel || (isStepCounting ? 'Шаги' : 'Время (мс)'), color: '#64748b', font: { family: 'Outfit', size: 12 } },
                         ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 } },
                         grid: { color: 'rgba(255, 255, 255, 0.04)' }
@@ -115,7 +118,7 @@ window.initLiveChart = (canvasId, title, yAxisLabel, isStepCounting) => {
     }
 };
 
-window.appendLivePoint = (canvasId, n, val, isOutlier) => {
+window.appendLivePoint = (canvasId, n, val, isOutlier, theoVal) => {
     const chart = activeCharts[canvasId];
     if (!chart || !chart.data || !chart.data.datasets || chart.data.datasets.length === 0) return;
 
@@ -134,6 +137,10 @@ window.appendLivePoint = (canvasId, n, val, isOutlier) => {
             ds.pointStyle.push('circle');
             ds.pointBackgroundColor.push('#38bdf8');
             ds.pointBorderColor.push('#0284c7');
+        }
+
+        if (chart.data.datasets.length > 1 && theoVal !== undefined && theoVal !== null && theoVal > 0) {
+            chart.data.datasets[1].data.push(theoVal);
         }
 
         chart.update('none'); // Плавный рендер без сброса холста
@@ -175,7 +182,7 @@ window.finalizeChart = (canvasId, labels, empData, theoData, outlierIndices) => 
             chart.data.datasets[1].data = theoData;
         }
 
-        chart.update();
+        chart.update('none');
     } catch (e) {
         console.warn('[AlgorithmLab] Error finalizing chart:', e);
     }
@@ -239,6 +246,9 @@ window.renderMultiSeriesChart = (canvasId, labels, seriesList, yLabel) => {
                         grid: { color: 'rgba(255, 255, 255, 0.04)' }
                     },
                     y: {
+                        beginAtZero: true,
+                        min: 0,
+                        suggestedMin: 0,
                         title: { display: true, text: yLabel || 'Время (мс)', color: '#64748b' },
                         ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono' } },
                         grid: { color: 'rgba(255, 255, 255, 0.04)' }
@@ -302,6 +312,9 @@ window.initMultiLiveChart = (canvasId, title, seriesNames, yAxisLabel) => {
                     grid: { color: 'rgba(255, 255, 255, 0.04)' }
                 },
                 y: {
+                    beginAtZero: true,
+                    min: 0,
+                    suggestedMin: 0,
                     title: { display: true, text: yAxisLabel || 'Количество шагов (умножений)', color: '#64748b', font: { family: 'Outfit', size: 12 } },
                     ticks: { color: '#94a3b8', font: { family: 'JetBrains Mono' } },
                     grid: { color: 'rgba(255, 255, 255, 0.04)' }

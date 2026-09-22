@@ -193,29 +193,80 @@ public class HybridExperimentStorageService : IExperimentStorageService
             existingPoints.Add(pt);
         }
 
-        // Персистентность в localStorage
+        // Персистентность в localStorage:
+        // КРИТИЧЕСКАЯ ОПТИМИЗАЦИЯ ДЛЯ ПРЕДОТВРАЩЕНИЯ ПЕРЕПОЛНЕНИЯ КВОТЫ И ФРИЗА:
+        // Сохраняем компактные копии без массивов Runs (нужных только во время замера)
         try
         {
-            await _js.InvokeVoidAsync("localStorage.setItem", "algolab_history", JsonSerializer.Serialize(_localExperiments.Take(50)));
-            await _js.InvokeVoidAsync("localStorage.setItem", "algolab_cache", JsonSerializer.Serialize(_localCache));
+            var compactHistory = _localExperiments.Take(30).Select(exp => new ExperimentRecord
+            {
+                Id = exp.Id,
+                AlgorithmId = exp.AlgorithmId,
+                AlgorithmName = exp.AlgorithmName,
+                Category = exp.Category,
+                Complexity = exp.Complexity,
+                ComplexityDisplay = exp.ComplexityDisplay,
+                CreatedAt = exp.CreatedAt,
+                NMin = exp.NMin,
+                NMax = exp.NMax,
+                Step = exp.Step,
+                RunsPerN = exp.RunsPerN,
+                CFactor = exp.CFactor,
+                MSE = exp.MSE,
+                RMSE = exp.RMSE,
+                RSquared = exp.RSquared,
+                CV = exp.CV,
+                TotalDurationMs = exp.TotalDurationMs,
+                ConfigHash = exp.ConfigHash,
+                StorageSource = exp.StorageSource,
+                Points = exp.Points.Select(p => new BenchmarkPoint
+                {
+                    N = p.N,
+                    M = p.M,
+                    AvgMs = p.AvgMs,
+                    MedianMs = p.MedianMs,
+                    TheoMs = p.TheoMs,
+                    StepCount = p.StepCount,
+                    IsOutlier = p.IsOutlier
+                }).ToList()
+            }).ToList();
+
+            var compactCache = new Dictionary<string, List<BenchmarkPoint>>();
+            foreach (var kvp in _localCache)
+            {
+                compactCache[kvp.Key] = kvp.Value.Select(p => new BenchmarkPoint
+                {
+                    N = p.N,
+                    M = p.M,
+                    AvgMs = p.AvgMs,
+                    MedianMs = p.MedianMs,
+                    TheoMs = p.TheoMs,
+                    StepCount = p.StepCount,
+                    IsOutlier = p.IsOutlier
+                }).ToList();
+            }
+
+            await _js.InvokeVoidAsync("localStorage.setItem", "algolab_history", JsonSerializer.Serialize(compactHistory));
+            await _js.InvokeVoidAsync("localStorage.setItem", "algolab_cache", JsonSerializer.Serialize(compactCache));
         }
         catch { }
 
-        // 2. Если онлайн - сохраняем в PostgreSQL 18
+        // 2. Если онлайн - сохраняем в PostgreSQL 18 с жестким таймаутом 3 секунды
         if (Status == DatabaseStatus.ConnectedPostgreSql)
         {
             try
             {
-                var resp = await _http.PostAsJsonAsync($"{ApiUrl}/experiments", record);
+                using var saveCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                var resp = await _http.PostAsJsonAsync($"{ApiUrl}/experiments", record, saveCts.Token);
                 if (resp.IsSuccessStatusCode)
                 {
-                    var id = await resp.Content.ReadFromJsonAsync<Guid>();
+                    var id = await resp.Content.ReadFromJsonAsync<Guid>(cancellationToken: saveCts.Token);
                     return id != Guid.Empty ? id : record.Id;
                 }
             }
             catch
             {
-                // Ошибка отправки на сервер, сохранено локально
+                // Таймаут или сбой соединения с сервером — результат уже сохранен локально
             }
         }
 

@@ -180,7 +180,17 @@
         {
             await Chart.InitMultiLiveChartAsync("stepsChartCanvas", "Сравнение шагов возведения в степень", seriesNames, "Количество шагов");
 
+            var nValues = new List<int>();
             for (int n = 1; n <= nMax; n += step)
+            {
+                nValues.Add(n);
+            }
+            if (nValues.Count == 0 || nValues[^1] != nMax)
+            {
+                nValues.Add(nMax);
+            }
+
+            foreach (int n in nValues)
             {
                 cts.Token.ThrowIfCancellationRequested();
 
@@ -193,7 +203,7 @@
                 // Потоковая отправка трех точек одновременно в реальном времени
                 await Chart.AppendMultiLivePointAsync("stepsChartCanvas", n, new double[] { r1.StepCount, r2.StepCount, r3.StepCount });
 
-                if (n % 100 == 0 || n == 1 || n >= nMax - step)
+                if (n % 100 == 0 || n == 1 || n == nMax)
                 {
                     comparisonTable.Add(new StepRow(n, r1.StepCount, r2.StepCount, r3.StepCount));
                     await InvokeAsync(StateHasChanged);

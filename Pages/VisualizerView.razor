@@ -5,12 +5,12 @@
     <div class="controls-cockpit liquid-glass">
         <div class="param-group">
             <span class="param-label">Алгоритм:</span>
-            <select class="param-input" style="width: 170px;" @bind="selectedAlgorithm" disabled="@isSorting">
+            <select class="param-input" style="width: 220px;" @bind="selectedAlgorithm" @bind:after="ResetVisualizer" disabled="@isSorting">
                 <option value="Bubble Sort">Bubble Sort (Пузырьком)</option>
-                <option value="Selection Sort">Selection Sort (Выбором)</option>
-                <option value="Insertion Sort">Insertion Sort (Вставками)</option>
                 <option value="Quick Sort">Quick Sort (Быстрая)</option>
-                <option value="Merge Sort">Merge Sort (Слиянием)</option>
+                <option value="Pancake Sort">Pancake Sort (Блинная)</option>
+                <option value="Cocktail Shaker Sort">Cocktail Shaker Sort (Шейкерная)</option>
+                <option value="Comb Sort">Comb Sort (Расчёской)</option>
             </select>
         </div>
 

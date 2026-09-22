@@ -316,8 +316,18 @@
                     <span class="metric-value emerald">@(lastResult?.MSE.HasValue == true ? $"{lastResult.MSE.Value:E4}" : "—")</span>
                 </div>
                 <div class="telemetry-metric">
-                    <span class="metric-label">R² качество:</span>
-                    <span class="metric-value cyan">@(lastResult?.RSquared.HasValue == true ? $"{lastResult.RSquared.Value:F4}" : "—")</span>
+                    @if (currentAlgorithm?.Complexity == ComplexityType.O1)
+                    {
+                        <span class="metric-label" title="Коэффициент вариации CV = (σ/μ) × 100%: объективная мера стабильности константной функции O(1)">CV вариация (σ/μ):</span>
+                        <span class="metric-value cyan" title="Коэффициент вариации: чем ниже процент, тем выше стабильность константы">
+                            @(lastResult?.CV.HasValue == true ? $"{lastResult.CV.Value:F2}%" : "—")
+                        </span>
+                    }
+                    else
+                    {
+                        <span class="metric-label">R² качество:</span>
+                        <span class="metric-value cyan">@(lastResult?.RSquared.HasValue == true ? $"{lastResult.RSquared.Value:F4}" : "—")</span>
+                    }
                 </div>
             </div>
 
@@ -333,9 +343,9 @@
             <div class="chart-panel liquid-glass">
                 <div class="chart-header">
                     <div class="chart-title-box">
-                        <h2>@currentAlgorithm.Name</h2>
+                        <h2>@currentAlgorithm?.Name</h2>
                         <div class="chart-subtitle">
-                            Теоретическая сложность: <span class="complexity-pill">@currentAlgorithm.ComplexityDisplay</span>
+                            Теоретическая сложность: <span class="complexity-pill">@currentAlgorithm?.ComplexityDisplay</span>
                             | Данные: Master Dataset (@DatasetProvider.Config.Distribution)
                             @if (isFromCache)
                             {
@@ -371,10 +381,10 @@
                     Описание и назначение (по ТЗ):
                 </div>
                 <div style="font-size: 0.82rem; color: var(--text-secondary); line-height: 1.4;">
-                    @currentAlgorithm.Description
+                    @currentAlgorithm?.Description
                 </div>
                 <div style="font-size: 0.78rem; color: var(--accent-cyan); margin-top: 0.2rem;">
-                    <strong>Практическое применение:</strong> @currentAlgorithm.PracticalApplication
+                    <strong>Практическое применение:</strong> @currentAlgorithm?.PracticalApplication
                 </div>
             </div>
         }
@@ -511,7 +521,9 @@
         {
             currentProgressN = pt.N;
             if (pt.IsOutlier) outliersCount++;
-            await Chart.AppendLivePointAsync("liveChartCanvas", pt.N, pt.AvgMs, pt.IsOutlier);
+            double val = (currentAlgorithm is IStepCountableAlgorithm) ? pt.StepCount : pt.AvgMs;
+            double? theoVal = (currentAlgorithm is IStepCountableAlgorithm) ? null : pt.TheoMs;
+            await Chart.AppendLivePointAsync("liveChartCanvas", pt.N, val, pt.IsOutlier, theoVal);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -533,8 +545,12 @@
         outliersCount = outlierIndices.Count;
 
         var labels = result.Points.Select(p => p.N).ToList();
-        var empData = result.Points.Select(p => p.AvgMs).ToList();
-        var theoData = result.Points.Select(p => p.TheoMs).ToList();
+        var empData = (currentAlgorithm is IStepCountableAlgorithm)
+            ? result.Points.Select(p => (double)p.StepCount).ToList()
+            : result.Points.Select(p => p.AvgMs).ToList();
+        var theoData = (currentAlgorithm is IStepCountableAlgorithm)
+            ? null
+            : result.Points.Select(p => p.TheoMs).ToList();
 
         _ = Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
     }

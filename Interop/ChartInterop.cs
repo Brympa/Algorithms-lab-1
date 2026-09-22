@@ -20,11 +20,11 @@ public class ChartInterop
         }
     }
 
-    public async Task AppendLivePointAsync(string canvasId, int n, double val, bool isOutlier = false)
+    public async Task AppendLivePointAsync(string canvasId, int n, double val, bool isOutlier = false, double? theoVal = null)
     {
         try
         {
-            await _js.InvokeVoidAsync("appendLivePoint", canvasId, n, val, isOutlier);
+            await _js.InvokeVoidAsync("appendLivePoint", canvasId, n, val, isOutlier, theoVal);
         }
         catch (Exception ex)
         {

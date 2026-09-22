@@ -98,30 +98,6 @@ public class MasterDatasetProvider : IMasterDatasetProvider
         return (A, B);
     }
 
-    public (string Text, string Pattern) GenerateStringData(int textLength, int patternLength)
-    {
-        var rnd = new Random(_config.Seed + textLength * 13);
-        const string alphabet = "ACGT"; // Генетический 4-буквенный алфавит для показательной сложности
-        var textChars = new char[textLength];
-        for (int i = 0; i < textLength; i++)
-        {
-            textChars[i] = alphabet[rnd.Next(alphabet.Length)];
-        }
-
-        patternLength = Math.Min(patternLength, textLength);
-        int startPos = rnd.Next(0, Math.Max(1, textLength - patternLength));
-        var patternChars = new char[patternLength];
-        Array.Copy(textChars, startPos, patternChars, 0, patternLength);
-
-        // Вносим 1 мутацию в конец для проверки нетривиального сдвига KMP
-        if (patternLength > 3)
-        {
-            patternChars[^1] = alphabet[(alphabet.IndexOf(patternChars[^1]) + 1) % alphabet.Length];
-        }
-
-        return (new string(textChars), new string(patternChars));
-    }
-
     private void EnsureCapacity(int required)
     {
         int newSize = Math.Max(required, _masterVector.Length * 2);

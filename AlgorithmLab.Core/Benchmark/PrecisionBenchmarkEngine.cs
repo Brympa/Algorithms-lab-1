@@ -41,11 +41,6 @@ public class PrecisionBenchmarkEngine
                 (var A, var B) = _datasetProvider.GenerateMatrices(10, 10);
                 mat.Execute(A, B);
             }
-            else if (algorithm is IStringSearchAlgorithm str)
-            {
-                (var text, var pat) = _datasetProvider.GenerateStringData(100, 10);
-                str.Execute(text, pat);
-            }
             else if (algorithm is IStepCountableAlgorithm step)
             {
                 step.ExecuteWithSteps(1.5, 20);
@@ -96,7 +91,18 @@ public class PrecisionBenchmarkEngine
 
         var allPoints = new List<BenchmarkPoint>();
 
+        // Формируем сетку точек N с гарантированным включением конечной границы nMax
+        var nValues = new List<int>();
         for (int n = nMin; n <= nMax; n += step)
+        {
+            nValues.Add(n);
+        }
+        if (nValues.Count == 0 || nValues[^1] != nMax)
+        {
+            nValues.Add(nMax);
+        }
+
+        foreach (int n in nValues)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -130,7 +136,40 @@ public class PrecisionBenchmarkEngine
                 }
             }
 
+            if (OutlierDetector.IsOnlinePointOutlier(pt, allPoints, algorithm.Complexity))
+            {
+                pt.IsOutlier = true;
+            }
+
             allPoints.Add(pt);
+
+            if (algorithm is not IStepCountableAlgorithm)
+            {
+                // Динамический расчет теоретической кривой T(n) в реальном времени,
+                // чтобы график сразу отображал пунктирную линию параллельно замерам
+                var cleanSoFar = allPoints.Where(p => !p.IsOutlier).ToList();
+                if (cleanSoFar.Count == 0) cleanSoFar = allPoints;
+
+                if (algorithm.Complexity == ComplexityType.O1)
+                {
+                    var sortedClean = cleanSoFar.Select(p => p.AvgMs).OrderBy(x => x).ToList();
+                    double runningC = sortedClean[sortedClean.Count / 2];
+                    pt.TheoMs = runningC;
+                }
+                else
+                {
+                    double sumTG = 0;
+                    double sumG2 = 0;
+                    foreach (var p in cleanSoFar)
+                    {
+                        double g = ApproximationEngine.EvaluateG(algorithm.Complexity, p.N);
+                        sumTG += p.AvgMs * g;
+                        sumG2 += g * g;
+                    }
+                    double runningC = sumG2 > 1e-15 ? sumTG / sumG2 : 0;
+                    pt.TheoMs = runningC * ApproximationEngine.EvaluateG(algorithm.Complexity, pt.N);
+                }
+            }
 
             // Немедленная потоковая передача точки в UI для Live-отрисовки
             if (onPointComputed != null)
@@ -143,8 +182,8 @@ public class PrecisionBenchmarkEngine
             await Task.Delay(1, cancellationToken);
         }
 
-        // Постобработка: поиск выбросов по всей серии
-        OutlierDetector.DetectPointOutliers(allPoints);
+        // Постобработка: поиск выбросов по всей серии с учетом типа сложности
+        OutlierDetector.DetectPointOutliers(allPoints, algorithm.Complexity);
 
         // Расчет аппроксимации методом наименьших квадратов и MSE
         if (algorithm is not IStepCountableAlgorithm)
@@ -154,6 +193,7 @@ public class PrecisionBenchmarkEngine
             experiment.MSE = approx.MSE;
             experiment.RMSE = approx.RMSE;
             experiment.RSquared = approx.RSquared;
+            experiment.CV = approx.CV;
         }
 
         totalStopwatch.Stop();
@@ -220,6 +260,9 @@ public class PrecisionBenchmarkEngine
         int iterations = CalculateIterations(algorithm.Complexity, n);
         var runs = new List<PointRun>(runsPerN);
 
+        // Предварительная стабилизация памяти перед серией запусков для данного N
+        GC.Collect(0, GCCollectionMode.Optimized);
+
         // 1. ИЗОЛЯЦИЯ: Предварительная аллокация и клонирование данных ДО замера
         if (algorithm is ISortAlgorithm sortAlgo)
         {
@@ -231,8 +274,6 @@ public class PrecisionBenchmarkEngine
                 {
                     copies[it] = _datasetProvider.CloneMasterSlice(n);
                 }
-
-                GC.Collect(0, GCCollectionMode.Optimized);
 
                 long start = Stopwatch.GetTimestamp();
                 for (int it = 0; it < iterations; it++)
@@ -255,7 +296,6 @@ public class PrecisionBenchmarkEngine
             for (int r = 0; r < runsPerN; r++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                GC.Collect(0, GCCollectionMode.Optimized);
 
                 double sink = 0.0;
                 long start = Stopwatch.GetTimestamp();
@@ -280,35 +320,11 @@ public class PrecisionBenchmarkEngine
             for (int r = 0; r < runsPerN; r++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                GC.Collect(0, GCCollectionMode.Optimized);
 
                 long start = Stopwatch.GetTimestamp();
                 for (int it = 0; it < iterations; it++)
                 {
                     matAlgo.Execute(A, B);
-                }
-                long end = Stopwatch.GetTimestamp();
-
-                double totalMs = (double)(end - start) * 1000.0 / Stopwatch.Frequency;
-                double perIterationMs = totalMs / iterations;
-
-                runs.Add(new PointRun { RunIndex = r + 1, ElapsedMs = perIterationMs });
-                await Task.Yield();
-            }
-        }
-        else if (algorithm is IStringSearchAlgorithm strAlgo)
-        {
-            (var text, var pat) = _datasetProvider.GenerateStringData(n, System.Math.Max(5, n / 10));
-
-            for (int r = 0; r < runsPerN; r++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                GC.Collect(0, GCCollectionMode.Optimized);
-
-                long start = Stopwatch.GetTimestamp();
-                for (int it = 0; it < iterations; it++)
-                {
-                    strAlgo.Execute(text, pat);
                 }
                 long end = Stopwatch.GetTimestamp();
 

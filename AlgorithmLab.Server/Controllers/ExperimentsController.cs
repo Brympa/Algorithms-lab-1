@@ -57,6 +57,7 @@ public class ExperimentsController : ControllerBase
             MSE = e.MSE,
             RMSE = e.RMSE,
             RSquared = e.RSquared,
+            CV = e.CV,
             TotalDurationMs = e.TotalDurationMs,
             ConfigHash = e.ConfigHash ?? string.Empty,
             StorageSource = string.IsNullOrEmpty(e.StorageSource) ? "PostgreSQL 18" : e.StorageSource
@@ -91,6 +92,7 @@ public class ExperimentsController : ControllerBase
             MSE = e.MSE,
             RMSE = e.RMSE,
             RSquared = e.RSquared,
+            CV = e.CV,
             TotalDurationMs = e.TotalDurationMs,
             ConfigHash = e.ConfigHash ?? string.Empty,
             StorageSource = string.IsNullOrEmpty(e.StorageSource) ? "PostgreSQL 18" : e.StorageSource,
@@ -136,10 +138,16 @@ public class ExperimentsController : ControllerBase
             MSE = record.MSE,
             RMSE = record.RMSE,
             RSquared = record.RSquared,
+            CV = record.CV,
             TotalDurationMs = record.TotalDurationMs,
             ConfigHash = record.ConfigHash,
             StorageSource = string.IsNullOrEmpty(record.StorageSource) ? "PostgreSQL 18" : record.StorageSource
         };
+
+        string configHash = entity.ConfigHash ?? "";
+        var existingCaches = await _db.BenchmarkCache
+            .Where(c => c.AlgorithmId == entity.AlgorithmId && c.ConfigHash == configHash)
+            .ToDictionaryAsync(c => (c.N, c.M));
 
         foreach (var p in record.Points)
         {
@@ -170,16 +178,15 @@ public class ExperimentsController : ControllerBase
 
             entity.Points.Add(pointEntity);
 
-            // Кэширование
-            var cache = await _db.BenchmarkCache.FindAsync(entity.AlgorithmId, p.N, p.M, entity.ConfigHash ?? "");
-            if (cache == null)
+            // Кэширование без N+1 запросов
+            if (!existingCaches.TryGetValue((p.N, p.M), out var cache))
             {
                 _db.BenchmarkCache.Add(new BenchmarkCacheEntity
                 {
                     AlgorithmId = entity.AlgorithmId,
                     N = p.N,
                     M = p.M,
-                    ConfigHash = entity.ConfigHash ?? "",
+                    ConfigHash = configHash,
                     AvgMs = p.AvgMs,
                     MedianMs = p.MedianMs,
                     StepCount = p.StepCount,

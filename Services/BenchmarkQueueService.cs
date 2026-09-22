@@ -230,36 +230,60 @@ public class BenchmarkQueueService
                     string configHash = _datasetProvider.Config.ComputeHash();
                     ExperimentRecord? result = null;
 
-                    // 1. Попытка нативного выполнения на сервере (ASP.NET Core / Multi-core CPU), если выбран ServerNative
+                    // 1. Попытка нативного потокового выполнения на сервере (ASP.NET Core / Multi-core CPU)
                     if (EngineMode == ExecutionEngineMode.ServerNative)
                     {
                         try
                         {
-                            var reqBody = new
-                            {
-                                algorithmId = nextItem.Algorithm.Id,
-                                nMin = nextItem.NMin,
-                                nMax = nextItem.NMax,
-                                step = nextItem.Step,
-                                runsPerN = nextItem.RunsPerN
-                            };
+                            var query = $"http://localhost:5000/api/benchmark/stream?algorithmId={Uri.EscapeDataString(nextItem.Algorithm.Id)}&nMin={nextItem.NMin}&nMax={nextItem.NMax}&step={nextItem.Step}&runsPerN={nextItem.RunsPerN}";
+                            using var req = new HttpRequestMessage(HttpMethod.Get, query);
+                            Microsoft.AspNetCore.Components.WebAssembly.Http.WebAssemblyHttpRequestMessageExtensions.SetBrowserResponseStreamingEnabled(req, true);
+                            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, _currentCts.Token);
 
-                            var resp = await _http.PostAsJsonAsync("http://localhost:5000/api/benchmark/run", reqBody, _currentCts.Token);
                             if (resp.IsSuccessStatusCode)
                             {
-                                result = await resp.Content.ReadFromJsonAsync<ExperimentRecord>(cancellationToken: _currentCts.Token);
-                                if (result != null)
+                                using var stream = await resp.Content.ReadAsStreamAsync(_currentCts.Token);
+                                using var reader = new StreamReader(stream);
+
+                                var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                                bool isCompleteEvent = false;
+
+                                string? line;
+                                while ((line = await reader.ReadLineAsync(_currentCts.Token)) != null)
                                 {
-                                    // Потоковое оповещение UI о полученных точках
-                                    foreach (var pt in result.Points)
+                                    if (_currentCts.Token.IsCancellationRequested) break;
+                                    if (string.IsNullOrWhiteSpace(line)) continue;
+
+                                    if (line.StartsWith("event: complete", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        nextItem.CurrentProgressN = pt.N;
-                                        if (pt.IsOutlier) nextItem.OutliersCount++;
-                                        OnPointComputed?.Invoke(nextItem, pt);
-                                        await Task.Yield();
+                                        isCompleteEvent = true;
+                                    }
+                                    else if (line.StartsWith("data: ", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        var json = line.Substring(6).Trim();
+                                        if (isCompleteEvent)
+                                        {
+                                            result = System.Text.Json.JsonSerializer.Deserialize<ExperimentRecord>(json, jsonOptions);
+                                            break;
+                                        }
+                                        else
+                                        {
+                                            var pt = System.Text.Json.JsonSerializer.Deserialize<BenchmarkPoint>(json, jsonOptions);
+                                            if (pt != null)
+                                            {
+                                                nextItem.CurrentProgressN = pt.N;
+                                                if (pt.IsOutlier) nextItem.OutliersCount++;
+                                                OnPointComputed?.Invoke(nextItem, pt);
+                                                await Task.Yield();
+                                            }
+                                        }
                                     }
                                 }
                             }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
                         }
                         catch
                         {
@@ -295,8 +319,24 @@ public class BenchmarkQueueService
                     nextItem.Result = result;
                     nextItem.TotalDurationMs = result.TotalDurationMs;
                     nextItem.Status = QueueItemStatus.Completed;
+                    nextItem.CurrentProgressN = nextItem.NMax; // Гарантируем 100% на шкале прогресса
 
-                    await _storage.SaveExperimentAsync(result);
+                    // НЕМЕДЛЕННО оповещаем UI о завершении до фонового сохранения в хранилище,
+                    // чтобы исключить любой фриз при сериализации или сетевых вызовах
+                    CurrentRunningItem = null;
+                    OnItemCompleted?.Invoke(nextItem);
+                    OnQueueChanged?.Invoke();
+                    await Task.Yield();
+
+                    // Изолированное сохранение в БД/кэш
+                    try
+                    {
+                        await _storage.SaveExperimentAsync(result);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        Console.WriteLine($"[BenchmarkQueueService] Warning: SaveExperimentAsync: {saveEx.Message}");
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -311,8 +351,11 @@ public class BenchmarkQueueService
                 {
                     _currentCts?.Dispose();
                     _currentCts = null;
-                    CurrentRunningItem = null;
-                    OnItemCompleted?.Invoke(nextItem);
+                    if (CurrentRunningItem == nextItem)
+                    {
+                        CurrentRunningItem = null;
+                        OnItemCompleted?.Invoke(nextItem);
+                    }
                     OnQueueChanged?.Invoke();
                 }
             }

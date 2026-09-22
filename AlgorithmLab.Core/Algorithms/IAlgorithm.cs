@@ -36,8 +36,3 @@ public interface IStepCountableAlgorithm : IAlgorithm
 {
     StepExecutionResult ExecuteWithSteps(double x, int n);
 }
-
-public interface IStringSearchAlgorithm : IAlgorithm
-{
-    int Execute(string text, string pattern);
-}

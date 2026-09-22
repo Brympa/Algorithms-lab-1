@@ -1,4 +1,4 @@
-﻿namespace AlgorithmLab.Visualizer;
+namespace AlgorithmLab.Visualizer;
 
 public delegate void StepLogger(int comp1 = -1, int comp2 = -1, int swap1 = -1, int swap2 = -1, int pivot = -1, string msg = "");
 
@@ -36,19 +36,23 @@ public static class SortingVisualizer
             case "Bubble Sort":
                 RunBubbleSort(arr, AddStep, ref comparisons, ref swaps, sortedIndices);
                 break;
-            case "Selection Sort":
-                RunSelectionSort(arr, AddStep, ref comparisons, ref swaps, sortedIndices);
-                break;
-            case "Insertion Sort":
-                RunInsertionSort(arr, AddStep, ref comparisons, ref swaps, sortedIndices);
-                break;
             case "Quick Sort":
                 RunQuickSort(arr, 0, arr.Length - 1, AddStep, ref comparisons, ref swaps, sortedIndices);
                 for (int i = 0; i < arr.Length; i++) sortedIndices.Add(i);
                 AddStep(msg: "Сортировка завершена!");
                 break;
-            case "Merge Sort":
-                RunMergeSort(arr, 0, arr.Length - 1, AddStep, ref comparisons, ref swaps, sortedIndices);
+            case "Pancake Sort":
+                RunPancakeSort(arr, AddStep, ref comparisons, ref swaps, sortedIndices);
+                for (int i = 0; i < arr.Length; i++) sortedIndices.Add(i);
+                AddStep(msg: "Сортировка завершена!");
+                break;
+            case "Cocktail Shaker Sort":
+                RunCocktailShakerSort(arr, AddStep, ref comparisons, ref swaps, sortedIndices);
+                for (int i = 0; i < arr.Length; i++) sortedIndices.Add(i);
+                AddStep(msg: "Сортировка завершена!");
+                break;
+            case "Comb Sort":
+                RunCombSort(arr, AddStep, ref comparisons, ref swaps, sortedIndices);
                 for (int i = 0; i < arr.Length; i++) sortedIndices.Add(i);
                 AddStep(msg: "Сортировка завершена!");
                 break;
@@ -81,67 +85,6 @@ public static class SortingVisualizer
             addStep(msg: $"Элемент {arr[n - 1 - i]} занял финальную позицию");
         }
         sortedIndices.Add(0);
-        addStep(msg: "Сортировка завершена!");
-    }
-
-    private static void RunSelectionSort(int[] arr, StepLogger addStep, ref int comparisons, ref int swaps, HashSet<int> sortedIndices)
-    {
-        int n = arr.Length;
-        for (int i = 0; i < n - 1; i++)
-        {
-            int minIdx = i;
-            addStep(comp1: minIdx, pivot: minIdx, msg: $"Поиск минимума начиная с индекса {i}");
-
-            for (int j = i + 1; j < n; j++)
-            {
-                comparisons++;
-                addStep(comp1: j, comp2: minIdx, pivot: minIdx, msg: $"Сравнение {arr[j]} с текущим минимумом {arr[minIdx]}");
-
-                if (arr[j] < arr[minIdx])
-                {
-                    minIdx = j;
-                    addStep(comp1: j, pivot: minIdx, msg: $"Найден новый минимум: {arr[minIdx]}");
-                }
-            }
-
-            if (minIdx != i)
-            {
-                (arr[i], arr[minIdx]) = (arr[minIdx], arr[i]);
-                swaps++;
-                addStep(swap1: i, swap2: minIdx, msg: $"Обмен минимума {arr[i]} на позицию {i}");
-            }
-            sortedIndices.Add(i);
-        }
-        sortedIndices.Add(n - 1);
-        addStep(msg: "Сортировка завершена!");
-    }
-
-    private static void RunInsertionSort(int[] arr, StepLogger addStep, ref int comparisons, ref int swaps, HashSet<int> sortedIndices)
-    {
-        int n = arr.Length;
-        sortedIndices.Add(0);
-
-        for (int i = 1; i < n; i++)
-        {
-            int key = arr[i];
-            int j = i - 1;
-            addStep(comp1: i, pivot: i, msg: $"Вставка элемента {key} в отсортированную часть");
-
-            while (j >= 0 && arr[j] > key)
-            {
-                comparisons++;
-                arr[j + 1] = arr[j];
-                swaps++;
-                addStep(swap1: j, swap2: j + 1, msg: $"Сдвиг элемента {arr[j]} вправо");
-                j--;
-            }
-            if (j >= 0) comparisons++;
-
-            arr[j + 1] = key;
-            swaps++;
-            sortedIndices.Add(i);
-            addStep(swap1: j + 1, msg: $"Размещение {key} на позиции {j + 1}");
-        }
         addStep(msg: "Сортировка завершена!");
     }
 
@@ -191,71 +134,144 @@ public static class SortingVisualizer
         return i + 1;
     }
 
-    private static void RunMergeSort(int[] arr, int left, int right, StepLogger addStep, ref int comparisons, ref int swaps, HashSet<int> sortedIndices)
+    private static void RunPancakeSort(int[] arr, StepLogger addStep, ref int comparisons, ref int swaps, HashSet<int> sortedIndices)
     {
-        if (left < right)
+        int n = arr.Length;
+        for (int currSize = n; currSize > 1; currSize--)
         {
-            int middle = left + (right - left) / 2;
-            RunMergeSort(arr, left, middle, addStep, ref comparisons, ref swaps, sortedIndices);
-            RunMergeSort(arr, middle + 1, right, addStep, ref comparisons, ref swaps, sortedIndices);
-            Merge(arr, left, middle, right, addStep, ref comparisons, ref swaps);
+            int maxIdx = 0;
+            for (int i = 1; i < currSize; i++)
+            {
+                comparisons++;
+                addStep(comp1: i, comp2: maxIdx, msg: $"Поиск максимума в стопке [0..{currSize - 1}]: сравниваем {arr[i]} и {arr[maxIdx]}");
+                if (arr[i] > arr[maxIdx])
+                {
+                    maxIdx = i;
+                }
+            }
+
+            if (maxIdx != currSize - 1)
+            {
+                // Переворачиваем префикс до maxIdx, чтобы вытащить максимум наверх стопки
+                if (maxIdx > 0)
+                {
+                    FlipWithSteps(arr, maxIdx, addStep, ref swaps, $"Флип префикса [0..{maxIdx}]: перемещаем максимум {arr[maxIdx]} на вершину");
+                }
+                // Переворачиваем всю стопку до currSize - 1, чтобы поместить максимум на его место
+                FlipWithSteps(arr, currSize - 1, addStep, ref swaps, $"Флип всей текущей стопки [0..{currSize - 1}]: отправляем максимум вниз");
+            }
+            sortedIndices.Add(currSize - 1);
+            addStep(msg: $"Элемент {arr[currSize - 1]} зафиксирован на позиции {currSize - 1}");
         }
     }
 
-    private static void Merge(int[] arr, int left, int middle, int right, StepLogger addStep, ref int comparisons, ref int swaps)
+    private static void FlipWithSteps(int[] arr, int k, StepLogger addStep, ref int swaps, string msg)
     {
-        int n1 = middle - left + 1;
-        int n2 = right - middle;
-
-        int[] L = new int[n1];
-        int[] R = new int[n2];
-
-        Array.Copy(arr, left, L, 0, n1);
-        Array.Copy(arr, middle + 1, R, 0, n2);
-
-        int i = 0, j = 0;
-        int k = left;
-
-        addStep(comp1: left, comp2: right, msg: $"Слияние подмассивов [{left}..{middle}] и [{middle + 1}..{right}]");
-
-        while (i < n1 && j < n2)
+        int left = 0;
+        int right = k;
+        while (left < right)
         {
-            comparisons++;
-            addStep(comp1: left + i, comp2: middle + 1 + j, msg: $"Сравнение элементов {L[i]} и {R[j]}");
-
-            if (L[i] <= R[j])
-            {
-                arr[k] = L[i];
-                swaps++;
-                addStep(swap1: k, msg: $"Запись {L[i]} в массив на позицию {k}");
-                i++;
-            }
-            else
-            {
-                arr[k] = R[j];
-                swaps++;
-                addStep(swap1: k, msg: $"Запись {R[j]} в массив на позицию {k}");
-                j++;
-            }
-            k++;
-        }
-
-        while (i < n1)
-        {
-            arr[k] = L[i];
+            (arr[left], arr[right]) = (arr[right], arr[left]);
             swaps++;
-            addStep(swap1: k, msg: $"Запись оставшегося элемента {L[i]} на позицию {k}");
-            i++;
-            k++;
+            addStep(swap1: left, swap2: right, msg: msg);
+            left++;
+            right--;
         }
+    }
 
-        while (j < n2)
+    private static void RunCocktailShakerSort(int[] arr, StepLogger addStep, ref int comparisons, ref int swaps, HashSet<int> sortedIndices)
+    {
+        int n = arr.Length;
+        if (n <= 1) return;
+
+        bool swapped = true;
+        int start = 0;
+        int end = n - 1;
+
+        while (swapped)
         {
-            arr[k] = R[j];
-            swaps++;
-            addStep(swap1: k, msg: $"Запись оставшегося элемента {R[j]} на позицию {k}");
-            j++;
-            k++;
+            swapped = false;
+
+            // Проход слева направо (тяжелые элементы)
+            for (int i = start; i < end; i++)
+            {
+                comparisons++;
+                addStep(comp1: i, comp2: i + 1, msg: $"Проход вправо: сравнение {arr[i]} и {arr[i + 1]}");
+
+                if (arr[i] > arr[i + 1])
+                {
+                    (arr[i], arr[i + 1]) = (arr[i + 1], arr[i]);
+                    swaps++;
+                    swapped = true;
+                    addStep(swap1: i, swap2: i + 1, msg: $"Обмен мест: {arr[i + 1]} и {arr[i]}");
+                }
+            }
+
+            sortedIndices.Add(end);
+            addStep(msg: $"Элемент {arr[end]} зафиксирован на позиции {end}");
+            if (!swapped) break;
+
+            swapped = false;
+            end--;
+
+            // Проход справа налево (легкие элементы)
+            for (int i = end - 1; i >= start; i--)
+            {
+                comparisons++;
+                addStep(comp1: i, comp2: i + 1, msg: $"Проход влево: сравнение {arr[i]} и {arr[i + 1]}");
+
+                if (arr[i] > arr[i + 1])
+                {
+                    (arr[i], arr[i + 1]) = (arr[i + 1], arr[i]);
+                    swaps++;
+                    swapped = true;
+                    addStep(swap1: i, swap2: i + 1, msg: $"Обмен мест: {arr[i + 1]} и {arr[i]}");
+                }
+            }
+
+            sortedIndices.Add(start);
+            addStep(msg: $"Элемент {arr[start]} зафиксирован на позиции {start}");
+            start++;
+        }
+    }
+
+    private static void RunCombSort(int[] arr, StepLogger addStep, ref int comparisons, ref int swaps, HashSet<int> sortedIndices)
+    {
+        int n = arr.Length;
+        if (n <= 1) return;
+
+        int gap = n;
+        const double shrink = 1.3;
+        bool sorted = false;
+
+        while (!sorted)
+        {
+            gap = (int)(gap / shrink);
+            if (gap <= 1)
+            {
+                gap = 1;
+                sorted = true;
+            }
+            else if (gap == 9 || gap == 10)
+            {
+                gap = 11; // Rule 11
+            }
+
+            addStep(msg: $"Текущий шаг расчески gap = {gap}");
+
+            for (int i = 0; i + gap < n; i++)
+            {
+                comparisons++;
+                addStep(comp1: i, comp2: i + gap, msg: $"Сравнение элементов на расстоянии {gap}: {arr[i]} и {arr[i + gap]}");
+
+                if (arr[i] > arr[i + gap])
+                {
+                    (arr[i], arr[i + gap]) = (arr[i + gap], arr[i]);
+                    swaps++;
+                    sorted = false;
+                    addStep(swap1: i, swap2: i + gap, msg: $"Обмен на расстоянии {gap}: {arr[i + gap]} и {arr[i]}");
+                }
+            }
         }
     }
 }

@@ -30,11 +30,16 @@ public static class ApproximationEngine
             return new ApproximationResult();
         }
 
+        // Вычисляем коэффициент C по "чистым" точкам без аномальных выбросов (если таких точек достаточно),
+        // чтобы единичные паузы GC или всплески ОС не задирали теоретическую кривую вверх.
+        var cleanPoints = points.Where(p => !p.IsOutlier).ToList();
+        var fitSource = (cleanPoints.Count >= System.Math.Max(3, points.Count / 4)) ? cleanPoints : points;
+
         double sumTG = 0.0;
         double sumG2 = 0.0;
         double sumT = 0.0;
 
-        foreach (var pt in points)
+        foreach (var pt in fitSource)
         {
             double g = EvaluateG(complexity, pt.N);
             sumTG += pt.AvgMs * g;
@@ -43,7 +48,7 @@ public static class ApproximationEngine
         }
 
         double c = (sumG2 > 1e-15) ? (sumTG / sumG2) : 0.0;
-        double meanT = sumT / points.Count;
+        double meanT = sumT / fitSource.Count;
 
         double sumSquaredErrors = 0.0;
         double totalSumSquares = 0.0;
@@ -74,12 +79,28 @@ public static class ApproximationEngine
             _ => $"T(n) = {c:E3} · f(n)"
         };
 
+        double? cv = null;
+        if (complexity == ComplexityType.O1)
+        {
+            // Для константной сложности рассчитываем коэффициент вариации CV = (sigma / mu) * 100%
+            // по чистым точкам fitSource, чтобы случайные выбросы ОС не искажали реальную стабильность алгоритма
+            double cleanSumSq = 0.0;
+            foreach (var pt in fitSource)
+            {
+                double diff = pt.AvgMs - c;
+                cleanSumSq += diff * diff;
+            }
+            double cleanSigma = System.Math.Sqrt(cleanSumSq / System.Math.Max(1, fitSource.Count));
+            cv = (c > 1e-15) ? (cleanSigma / c * 100.0) : 0.0;
+        }
+
         return new ApproximationResult
         {
             C = c,
             MSE = mse,
             RMSE = rmse,
             RSquared = rSquared,
+            CV = cv,
             FormulaDisplay = formulaDisplay
         };
     }

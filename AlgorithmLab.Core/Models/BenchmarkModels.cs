@@ -25,6 +25,7 @@ public class ApproximationResult
     public double MSE { get; set; }
     public double RMSE { get; set; }
     public double RSquared { get; set; }
+    public double? CV { get; set; }
     public string FormulaDisplay { get; set; } = string.Empty;
 }
 
@@ -45,6 +46,7 @@ public class ExperimentRecord
     public double? MSE { get; set; }
     public double? RMSE { get; set; }
     public double? RSquared { get; set; }
+    public double? CV { get; set; }
     public double TotalDurationMs { get; set; }
     public string ConfigHash { get; set; } = string.Empty;
     public string StorageSource { get; set; } = "Локальный кэш";

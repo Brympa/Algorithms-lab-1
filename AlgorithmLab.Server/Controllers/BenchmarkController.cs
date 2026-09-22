@@ -46,6 +46,44 @@ public class BenchmarkController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("stream")]
+    public async Task StreamBenchmark(
+        [FromQuery] string algorithmId,
+        [FromQuery] int nMin = 10,
+        [FromQuery] int nMax = 1000,
+        [FromQuery] int step = 50,
+        [FromQuery] int runsPerN = 5,
+        CancellationToken ct = default)
+    {
+        var algo = _registry.GetById(algorithmId);
+        if (algo == null)
+        {
+            Response.StatusCode = 404;
+            return;
+        }
+
+        Response.ContentType = "text/event-stream";
+        Response.Headers.CacheControl = "no-cache";
+        Response.Headers.Connection = "keep-alive";
+
+        var engine = new PrecisionBenchmarkEngine(_datasetProvider);
+
+        var result = await engine.RunExperimentAsync(
+            algo, nMin, nMax, step, runsPerN,
+            onPointComputed: async pt =>
+            {
+                var json = System.Text.Json.JsonSerializer.Serialize(pt);
+                await Response.WriteAsync($"data: {json}\n\n", ct);
+                await Response.Body.FlushAsync(ct);
+            },
+            cancellationToken: ct
+        );
+
+        var finalJson = System.Text.Json.JsonSerializer.Serialize(result);
+        await Response.WriteAsync($"event: complete\ndata: {finalJson}\n\n", ct);
+        await Response.Body.FlushAsync(ct);
+    }
+
     [HttpGet("info")]
     public IActionResult GetHostInfo()
     {

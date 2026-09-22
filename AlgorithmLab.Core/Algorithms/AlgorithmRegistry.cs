@@ -55,8 +55,9 @@ public class AlgorithmRegistry : IAlgorithmRegistry
         Register(new MatrixMultiplyAlgorithm());
 
         // 4. Индивидуальное задание (Часть III)
-        Register(new KmpAlgorithm());
-        Register(new NaiveStringSearchAlgorithm());
+        Register(new PancakeSortAlgorithm());
+        Register(new CocktailShakerSortAlgorithm());
+        Register(new CombSortAlgorithm());
 
         // 5. Алгоритмы возведения в степень (Часть IV - подсчет шагов)
         Register(new SimpleIterativePowerAlgorithm());

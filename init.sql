@@ -14,9 +14,12 @@ CREATE TABLE IF NOT EXISTS experiments (
     mse DOUBLE PRECISION,
     rmse DOUBLE PRECISION,
     r_squared DOUBLE PRECISION,
+    cv DOUBLE PRECISION,
     total_duration_ms DOUBLE PRECISION DEFAULT 0,
     config_hash VARCHAR(64)
 );
+
+ALTER TABLE experiments ADD COLUMN IF NOT EXISTS cv DOUBLE PRECISION;
 
 CREATE TABLE IF NOT EXISTS experiment_points (
     id UUID PRIMARY KEY,

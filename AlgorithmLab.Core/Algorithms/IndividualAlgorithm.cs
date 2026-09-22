@@ -2,95 +2,171 @@ using AlgorithmLab.Core.Models;
 
 namespace AlgorithmLab.Core.Algorithms;
 
-public class KmpAlgorithm : IStringSearchAlgorithm
+/// <summary>
+/// Индивидуальное задание (Часть III ТЗ) - Даша
+/// Блинная сортировка: переворачивание префиксов массива
+/// </summary>
+public class PancakeSortAlgorithm : ISortAlgorithm
 {
-    public string Id => "ind_kmp";
-    public string Name => "Поиск подстроки Кнута-Морриса-Пратта (KMP)";
+    public string Id => "ind_pancake";
+    public string Name => "Блинная сортировка (Pancake sort)";
     public AlgorithmCategory Category => AlgorithmCategory.Individual;
-    public ComplexityType Complexity => ComplexityType.ON;
-    public string ComplexityDisplay => "O(n + m)";
-    public string Description => "Линейный алгоритм поиска образца в тексте с использованием префикс-функции (π) для предотвращения возвратов по тексту.";
-    public string PracticalApplication => "Биоинформатика (поиск последовательностей ДНК), текстовые редакторы, поисковые движки, сетевые фильтры пакетов.";
-    public int DefaultNMin => 1000;
-    public int DefaultNMax => 50000;
-    public int DefaultStep => 2500;
-    public int DefaultIterations => 30;
+    public ComplexityType Complexity => ComplexityType.ON2;
+    public string ComplexityDisplay => "O(n²)";
+    public string Description => "Сортировка стопки элементов путем последовательных переворотов (flips) префиксов массива от 0 до k для перемещения очередного максимума в конец.";
+    public string PracticalApplication => "Генетические алгоритмы (анализ мутаций хромосом), маршрутизация пакетов в сетях с топологией графов Кэли, робототехника.";
+    public int DefaultNMin => 20;
+    public int DefaultNMax => 400; // Для O(n^2) по ТЗ во избежание зависания
+    public int DefaultStep => 15;
+    public int DefaultIterations => 5;
 
-    public int Execute(string text, string pattern)
+    public void Execute(double[] array)
     {
-        if (string.IsNullOrEmpty(pattern) || string.IsNullOrEmpty(text)) return -1;
-
-        int[] pi = ComputePrefixFunction(pattern);
-        int j = 0; // индекс в pattern
-
-        for (int i = 0; i < text.Length; i++)
+        int n = array.Length;
+        for (int currSize = n; currSize > 1; currSize--)
         {
-            while (j > 0 && text[i] != pattern[j])
+            int maxIdx = 0;
+            for (int i = 1; i < currSize; i++)
             {
-                j = pi[j - 1];
+                if (array[i] > array[maxIdx])
+                {
+                    maxIdx = i;
+                }
             }
-            if (text[i] == pattern[j])
+
+            if (maxIdx != currSize - 1)
             {
-                j++;
-            }
-            if (j == pattern.Length)
-            {
-                return i - pattern.Length + 1; // Найдено первое совпадение
+                if (maxIdx > 0)
+                {
+                    Flip(array, maxIdx);
+                }
+                Flip(array, currSize - 1);
             }
         }
-        return -1;
     }
 
-    private static int[] ComputePrefixFunction(string pattern)
+    private static void Flip(double[] arr, int k)
     {
-        int m = pattern.Length;
-        int[] pi = new int[m];
-        int j = 0;
-
-        for (int i = 1; i < m; i++)
+        int left = 0;
+        int right = k;
+        while (left < right)
         {
-            while (j > 0 && pattern[i] != pattern[j])
-            {
-                j = pi[j - 1];
-            }
-            if (pattern[i] == pattern[j])
-            {
-                j++;
-            }
-            pi[i] = j;
+            (arr[left], arr[right]) = (arr[right], arr[left]);
+            left++;
+            right--;
         }
-        return pi;
     }
 }
 
-public class NaiveStringSearchAlgorithm : IStringSearchAlgorithm
+/// <summary>
+/// Индивидуальное задание (Часть III ТЗ) - Вадик
+/// Шейкерная сортировка: двунаправленный пузырек
+/// </summary>
+public class CocktailShakerSortAlgorithm : ISortAlgorithm
 {
-    public string Id => "ind_naive_search";
-    public string Name => "Наивный поиск подстроки";
+    public string Id => "ind_cocktail_shaker";
+    public string Name => "Шейкерная сортировка (Cocktail shaker sort)";
     public AlgorithmCategory Category => AlgorithmCategory.Individual;
     public ComplexityType Complexity => ComplexityType.ON2;
-    public string ComplexityDisplay => "O(n · m)";
-    public string Description => "Прямой перебор всех возможных позиций начала образца с посимвольным сравнением.";
-    public string PracticalApplication => "Сравнение эффективности с оптимальным алгоритмом KMP на худших случаях (периодические строки).";
-    public int DefaultNMin => 200;
-    public int DefaultNMax => 5000;
-    public int DefaultStep => 200;
+    public string ComplexityDisplay => "O(n²)";
+    public string Description => "Двунаправленная пузырьковая сортировка: поочередные проходы слева направо (всплывание максимума) и справа налево (опускание минимума).";
+    public string PracticalApplication => "Эффективна на частично упорядоченных массивах, решает проблему «черепах» (малых элементов в конце), контроллеры реального времени.";
+    public int DefaultNMin => 20;
+    public int DefaultNMax => 400; // Для O(n^2) по ТЗ
+    public int DefaultStep => 15;
+    public int DefaultIterations => 5;
+
+    public void Execute(double[] array)
+    {
+        int n = array.Length;
+        if (n <= 1) return;
+
+        bool swapped = true;
+        int start = 0;
+        int end = n - 1;
+
+        while (swapped)
+        {
+            swapped = false;
+
+            // Проход слева направо (тяжелые элементы всплывают вправо)
+            for (int i = start; i < end; i++)
+            {
+                if (array[i] > array[i + 1])
+                {
+                    (array[i], array[i + 1]) = (array[i + 1], array[i]);
+                    swapped = true;
+                }
+            }
+
+            if (!swapped) break;
+
+            swapped = false;
+            end--;
+
+            // Проход справа налево (легкие элементы опускаются влево)
+            for (int i = end - 1; i >= start; i--)
+            {
+                if (array[i] > array[i + 1])
+                {
+                    (array[i], array[i + 1]) = (array[i + 1], array[i]);
+                    swapped = true;
+                }
+            }
+
+            start++;
+        }
+    }
+}
+
+/// <summary>
+/// Индивидуальное задание (Часть III ТЗ) - Илья
+/// Сортировка расчёской: устранение инверсий с уменьшающимся шагом (фактор 1.3)
+/// </summary>
+public class CombSortAlgorithm : ISortAlgorithm
+{
+    public string Id => "ind_comb";
+    public string Name => "Сортировка расчёской (Comb sort)";
+    public AlgorithmCategory Category => AlgorithmCategory.Individual;
+    public ComplexityType Complexity => ComplexityType.ONLogN;
+    public string ComplexityDisplay => "O(n log n)";
+    public string Description => "Улучшение пузырьковой сортировки: сравнивает элементы на расстоянии шага gap, уменьшающегося с фактором сжатия 1.3 (shrink factor) с правилом Rule 11.";
+    public string PracticalApplication => "Высокоскоростная сортировка без накладных расходов на память O(1) и стек рекурсии в низкоуровневых драйверах и сетевых устройствах.";
+    public int DefaultNMin => 50;
+    public int DefaultNMax => 2000;
+    public int DefaultStep => 50;
     public int DefaultIterations => 10;
 
-    public int Execute(string text, string pattern)
+    public void Execute(double[] array)
     {
-        int n = text.Length;
-        int m = pattern.Length;
+        int n = array.Length;
+        if (n <= 1) return;
 
-        for (int i = 0; i <= n - m; i++)
+        int gap = n;
+        const double shrink = 1.3;
+        bool sorted = false;
+
+        while (!sorted)
         {
-            int j = 0;
-            while (j < m && text[i + j] == pattern[j])
+            gap = (int)(gap / shrink);
+            if (gap <= 1)
             {
-                j++;
+                gap = 1;
+                sorted = true;
             }
-            if (j == m) return i;
+            else if (gap == 9 || gap == 10)
+            {
+                gap = 11; // Эмпирическое правило Rule 11 ускоряет сходимость
+            }
+
+            for (int i = 0; i + gap < n; i++)
+            {
+                if (array[i] > array[i + gap])
+                {
+                    (array[i], array[i + gap]) = (array[i + gap], array[i]);
+                    sorted = false;
+                }
+            }
         }
-        return -1;
     }
 }
