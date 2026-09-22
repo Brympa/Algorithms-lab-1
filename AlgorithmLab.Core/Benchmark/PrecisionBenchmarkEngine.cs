@@ -107,11 +107,13 @@ public class PrecisionBenchmarkEngine
             cancellationToken.ThrowIfCancellationRequested();
 
             BenchmarkPoint? pt = null;
+            bool fromCache = false;
 
             // 1. Проверка точечного кэша (если передан поставщик кэша)
             if (getCachedPoint != null)
             {
                 pt = await getCachedPoint(n);
+                fromCache = pt != null;
             }
 
             // 2. Если точки нет в кэше — производим замер
@@ -177,9 +179,16 @@ public class PrecisionBenchmarkEngine
                 await onPointComputed(pt);
             }
 
-            // КРИТИЧНО ДЛЯ ПРЕДОТВРАЩЕНИЯ ЗАВИСАНИЯ ВКЛАДКИ:
-            // Отдаем управление браузеру на 1 кадр (1 мс), чтобы JS-движок перерисовал DOM и обработал клики
-            await Task.Delay(1, cancellationToken);
+            // Задержка 1мс — только при реальном замере (чтобы UI не зависал).
+            // Кэшированные точки идут без Delay: повторный прогон отрисовывается мгновенно.
+            if (!fromCache)
+            {
+                await Task.Delay(1, cancellationToken);
+            }
+            else if (allPoints.Count % 64 == 0)
+            {
+                await Task.Yield();
+            }
         }
 
         // Постобработка: поиск выбросов по всей серии с учетом типа сложности

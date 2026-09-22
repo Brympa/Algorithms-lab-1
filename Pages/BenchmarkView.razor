@@ -1,3 +1,4 @@
+@using System.Text.Json
 @using AlgorithmLab.Core.Algorithms
 @using AlgorithmLab.Core.Benchmark
 @using AlgorithmLab.Core.Dataset
@@ -14,6 +15,7 @@
 @inject ChartInterop Chart
 @inject IExperimentStorageService Storage
 @inject BenchmarkQueueService QueueService
+@inject IJSRuntime JS
 
 <div class="benchmark-grid">
     <!-- Левая панель: выбор исследуемого алгоритма -->
@@ -410,7 +412,6 @@
     private int currentProgressN = 0;
     private int outliersCount = 0;
     private bool isFromCache = false;
-    private int lastAppliedDefaultNMax = 0;
     private ExperimentRecord? lastResult;
 
     private bool isCurrentAlgoRunning => QueueService.CurrentRunningItem?.Algorithm.Id == currentAlgorithm?.Id;
@@ -421,6 +422,9 @@
         QueueService.OnItemStarted += HandleItemStarted;
         QueueService.OnPointComputed += HandlePointComputed;
         QueueService.OnItemCompleted += HandleItemCompleted;
+
+        // Восстанавливаем пользовательские параметры эксперимента (если были)
+        await LoadExperimentParamsAsync();
 
         var algos = Registry.GetByCategory(AlgorithmCategory.Vectors);
         if (algos.Count > 1)
@@ -449,38 +453,147 @@
     private void SelectAlgorithm(IAlgorithm algo)
     {
         bool isFirstSelection = currentAlgorithm == null;
-        bool userTouchedNMax = !isFirstSelection && nMax != lastAppliedDefaultNMax;
+        bool sameAlgo = currentAlgorithm?.Id == algo.Id;
 
         currentAlgorithm = algo;
-        nMin = algo.DefaultNMin;
-        step = algo.DefaultStep;
-        if (runsPerN <= 0) runsPerN = 5;
 
-        // Не «утыкиваем» N max в DefaultNMax, если пользователь уже менял его руками
-        if (isFirstSelection || !userTouchedNMax)
+        // При первом выборе — дефолты алгоритма; дальше параметры НЕ сбрасываем
+        // (иначе при переключении приходится вводить N/шаг заново).
+        if (isFirstSelection)
         {
+            nMin = algo.DefaultNMin;
             nMax = algo.DefaultNMax;
+            step = algo.DefaultStep;
+            if (runsPerN <= 0) runsPerN = 5;
         }
-        else if (nMax < nMin)
+        else if (!sameAlgo)
         {
-            nMax = Math.Max(nMin, algo.DefaultNMax);
+            // Лёгкая подстройка, чтобы N min/max оставались валидными для нового алгоритма
+            if (nMax < nMin)
+            {
+                nMax = Math.Max(nMin, algo.DefaultNMax);
+            }
+            if (step <= 0)
+            {
+                step = algo.DefaultStep;
+            }
+            if (runsPerN <= 0)
+            {
+                runsPerN = 5;
+            }
         }
-        lastAppliedDefaultNMax = algo.DefaultNMax;
 
         currentProgressN = 0;
         outliersCount = 0;
         isFromCache = false;
         lastResult = null;
 
-        // Если в очереди есть готовый результат для этого алгоритма — отображаем его
+        _ = RestoreChartForAlgorithmAsync(algo);
+    }
+
+    /// <summary>
+    /// Выбор алгоритма: готовый результат — сразу полный график;
+    /// идёт выполнение — восстановить прогресс; иначе — кэш/история без пересчёта.
+    /// </summary>
+    private async Task RestoreChartForAlgorithmAsync(IAlgorithm algo)
+    {
+        var isSteps = algo is IStepCountableAlgorithm;
+
         var completed = QueueService.Items.LastOrDefault(x => x.Algorithm.Id == algo.Id && x.Status == QueueItemStatus.Completed);
         if (completed?.Result != null)
         {
+            await Chart.InitLiveChartAsync("liveChartCanvas", algo.Name, isStepCounting: isSteps);
             RenderCompletedResult(completed.Result);
+            await InvokeAsync(StateHasChanged);
+            return;
         }
-        else
+
+        var running = QueueService.Items.LastOrDefault(x => x.Algorithm.Id == algo.Id && x.Status == QueueItemStatus.Running);
+        if (running != null)
         {
-            _ = Chart.InitLiveChartAsync("liveChartCanvas", algo.Name);
+            await Chart.InitLiveChartAsync("liveChartCanvas", algo.Name, isStepCounting: isSteps);
+            isFromCache = false;
+            lastResult = null;
+            currentProgressN = running.CurrentProgressN;
+            outliersCount = running.OutliersCount;
+
+            if (running.LivePoints.Count > 0)
+            {
+                var labels = running.LivePoints.Select(p => p.N).ToList();
+                List<double> emp = isSteps
+                    ? running.LivePoints.Select(p => (double)p.StepCount).ToList()
+                    : running.LivePoints.Select(p => p.AvgMs).ToList();
+                List<double>? theo = isSteps
+                    ? null
+                    : running.LivePoints.Select(p => p.TheoMs).ToList();
+                var outs = running.LivePoints
+                    .Select((p, i) => (p, i))
+                    .Where(t => t.p.IsOutlier)
+                    .Select(t => t.i)
+                    .ToList();
+                await Chart.FinalizeChartAsync("liveChartCanvas", labels, emp, theo, outs);
+            }
+
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        await Chart.InitLiveChartAsync("liveChartCanvas", algo.Name, isStepCounting: isSteps);
+        await TryRenderFromCacheAsync(algo);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Мгновенная отрисовка уже посчитанных точек из storage — без повторного прогона.
+    /// </summary>
+    private async Task TryRenderFromCacheAsync(IAlgorithm algo)
+    {
+        try
+        {
+            var configHash = DatasetProvider.Config.ComputeHash();
+            var points = await Storage.GetCachedPointsAsync(algo.Id, configHash);
+            if (points == null || points.Count < 2)
+            {
+                var history = await Storage.GetHistoryAsync();
+                var exp = history.FirstOrDefault(h => h.AlgorithmId == algo.Id && h.Points.Count >= 2);
+                if (exp?.Points?.Count >= 2)
+                {
+                    points = exp.Points.OrderBy(p => p.N).ToList();
+                }
+            }
+
+            if (points == null || points.Count < 2) return;
+
+            points = points.OrderBy(p => p.N).ToList();
+            isFromCache = true;
+            currentProgressN = points[^1].N;
+            outliersCount = points.Count(p => p.IsOutlier);
+
+            var labels = points.Select(p => p.N).ToList();
+            List<double> empData;
+            List<double>? theoData;
+            if (algo is IStepCountableAlgorithm)
+            {
+                empData = points.Select(p => (double)p.StepCount).ToList();
+                theoData = null;
+            }
+            else
+            {
+                empData = points.Select(p => p.AvgMs).ToList();
+                theoData = points.Select(p => p.TheoMs).ToList();
+            }
+
+            var outlierIndices = points
+                .Select((p, idx) => (p, idx))
+                .Where(t => t.p.IsOutlier)
+                .Select(t => t.idx)
+                .ToList();
+
+            await Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[BenchmarkView] cache restore: {ex.Message}");
         }
     }
 
@@ -509,7 +622,51 @@
     private void EnqueueCurrent()
     {
         if (currentAlgorithm == null) return;
+        SaveExperimentParams();
         QueueService.Enqueue(currentAlgorithm, nMin, nMax, step, runsPerN, forceRecalculate);
+    }
+
+    private async Task LoadExperimentParamsAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", "algolab_bench_params");
+            if (string.IsNullOrEmpty(json)) return;
+            var p = JsonSerializer.Deserialize<BenchParams>(json);
+            if (p == null) return;
+            if (p.NMin > 0) nMin = p.NMin;
+            if (p.NMax > 0) nMax = p.NMax;
+            if (p.Step > 0) step = p.Step;
+            if (p.RunsPerN > 0) runsPerN = p.RunsPerN;
+            forceRecalculate = p.ForceRecalculate;
+        }
+        catch { }
+    }
+
+    private void SaveExperimentParams()
+    {
+        try
+        {
+            var p = new BenchParams
+            {
+                NMin = nMin,
+                NMax = nMax,
+                Step = step,
+                RunsPerN = runsPerN,
+                ForceRecalculate = forceRecalculate
+            };
+            _ = JS.InvokeVoidAsync("localStorage.setItem", "algolab_bench_params", JsonSerializer.Serialize(p));
+        }
+        catch { }
+    }
+
+    private sealed class BenchParams
+    {
+        public int NMin { get; set; }
+        public int NMax { get; set; }
+        public int Step { get; set; }
+        public int RunsPerN { get; set; }
+        public bool ForceRecalculate { get; set; }
     }
 
     private async void HandleQueueState()
@@ -532,6 +689,8 @@
 
     private async void HandlePointComputed(BenchmarkQueueItem item, BenchmarkPoint pt)
     {
+        item.LivePoints.Add(pt);
+
         if (currentAlgorithm != null && item.Algorithm.Id == currentAlgorithm.Id)
         {
             currentProgressN = pt.N;
@@ -547,6 +706,9 @@
     {
         if (currentAlgorithm != null && item.Algorithm.Id == currentAlgorithm.Id && item.Result != null)
         {
+            // Полная перерисовка всех точек одним вызовом
+            await Chart.InitLiveChartAsync("liveChartCanvas", item.Algorithm.Name,
+                isStepCounting: currentAlgorithm is IStepCountableAlgorithm);
             RenderCompletedResult(item.Result);
         }
         await InvokeAsync(StateHasChanged);
@@ -567,6 +729,7 @@
             ? null
             : result.Points.Select(p => p.TheoMs).ToList();
 
+        isFromCache = false;
         _ = Chart.FinalizeChartAsync("liveChartCanvas", labels, empData, theoData, outlierIndices);
     }
 }

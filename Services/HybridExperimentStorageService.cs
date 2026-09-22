@@ -111,6 +111,13 @@ public class HybridExperimentStorageService : IExperimentStorageService
         await InitializeAsync();
         string cacheKey = $"{algorithmId}:{configHash}";
 
+        // 1. Локальный кэш — мгновенно, без сетевого RTT
+        if (_localCache.TryGetValue(cacheKey, out var localPoints) && localPoints.Count > 0)
+        {
+            return localPoints.OrderBy(p => p.N).ToList();
+        }
+
+        // 2. Онлайн PostgreSQL
         if (Status == DatabaseStatus.ConnectedPostgreSql)
         {
             try
@@ -119,18 +126,23 @@ public class HybridExperimentStorageService : IExperimentStorageService
                 var cached = await _http.GetFromJsonAsync<List<BenchmarkPoint>>(url);
                 if (cached != null && cached.Count > 0)
                 {
-                    return cached;
+                    if (!_localCache.TryGetValue(cacheKey, out var list))
+                    {
+                        list = new List<BenchmarkPoint>();
+                        _localCache[cacheKey] = list;
+                    }
+                    foreach (var p in cached)
+                    {
+                        list.RemoveAll(x => x.N == p.N && x.M == p.M);
+                        list.Add(p);
+                    }
+                    return cached.OrderBy(p => p.N).ToList();
                 }
             }
             catch
             {
-                // При ошибке сетевого вызова читаем из локального кэша
+                // локальный кэш уже проверен выше
             }
-        }
-
-        if (_localCache.TryGetValue(cacheKey, out var localPoints) && localPoints.Count > 0)
-        {
-            return localPoints;
         }
 
         return null;

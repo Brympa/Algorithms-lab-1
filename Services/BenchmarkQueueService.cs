@@ -39,6 +39,9 @@ public class BenchmarkQueueItem
     public ExperimentRecord? Result { get; set; }
     public string? ErrorMessage { get; set; }
 
+    /// <summary>Накопленные точки прогона — для восстановления графика при переключении.</summary>
+    public List<BenchmarkPoint> LivePoints { get; } = new();
+
     public double CalculateProgressPercent()
     {
         if (NMax <= NMin) return 100.0;
@@ -342,24 +345,20 @@ public class BenchmarkQueueService
                     nextItem.Status = QueueItemStatus.Completed;
                     nextItem.CurrentProgressN = nextItem.NMax;
 
-                    // UI сразу, без ожидания Save (Save уходит в debounce-фон storage)
+                    // Кладём в storage ДО Complete — кэш готов к мгновенному показу
+                    try
+                    {
+                        await _storage.SaveExperimentAsync(result);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        Console.WriteLine($"[BenchmarkQueueService] Warning: SaveExperimentAsync: {saveEx.Message}");
+                    }
+
                     CurrentRunningItem = null;
                     OnItemCompleted?.Invoke(nextItem);
                     OnQueueChanged?.Invoke();
                     await Task.Yield();
-
-                    // Фоновое сохранение — НЕ блокирует следующий item очереди
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await _storage.SaveExperimentAsync(result);
-                        }
-                        catch (Exception saveEx)
-                        {
-                            Console.WriteLine($"[BenchmarkQueueService] Warning: SaveExperimentAsync: {saveEx.Message}");
-                        }
-                    });
                 }
                 catch (OperationCanceledException)
                 {
