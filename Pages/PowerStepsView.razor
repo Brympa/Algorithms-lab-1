@@ -29,11 +29,11 @@
         </div>
         <div class="param-group">
             <span class="param-label">N max:</span>
-            <NumericStepper @bind-Value="nMax" Min="10" Max="2000" Step="50" Disabled="@isRunning" Width="75" />
+            <NumericStepper @bind-Value="nMax" Min="10" Max="2147483647" Step="50" Disabled="@isRunning" Width="75" />
         </div>
         <div class="param-group">
             <span class="param-label">Шаг:</span>
-            <NumericStepper @bind-Value="step" Min="1" Max="100" Step="5" Disabled="@isRunning" Width="65" />
+            <NumericStepper @bind-Value="step" Min="1" Max="2147483647" Step="5" Disabled="@isRunning" Width="65" />
         </div>
 
         <div class="btn-actions-group">

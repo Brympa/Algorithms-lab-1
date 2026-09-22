@@ -16,8 +16,8 @@ public class PancakeSortAlgorithm : ISortAlgorithm
     public string Description => "Сортировка стопки элементов путем последовательных переворотов (flips) префиксов массива от 0 до k для перемещения очередного максимума в конец.";
     public string PracticalApplication => "Генетические алгоритмы (анализ мутаций хромосом), маршрутизация пакетов в сетях с топологией графов Кэли, робототехника.";
     public int DefaultNMin => 20;
-    public int DefaultNMax => 400; // Для O(n^2) по ТЗ во избежание зависания
-    public int DefaultStep => 15;
+    public int DefaultNMax => 100_000;
+    public int DefaultStep => 500;
     public int DefaultIterations => 5;
 
     public void Execute(double[] array)
@@ -72,8 +72,8 @@ public class CocktailShakerSortAlgorithm : ISortAlgorithm
     public string Description => "Двунаправленная пузырьковая сортировка: поочередные проходы слева направо (всплывание максимума) и справа налево (опускание минимума).";
     public string PracticalApplication => "Эффективна на частично упорядоченных массивах, решает проблему «черепах» (малых элементов в конце), контроллеры реального времени.";
     public int DefaultNMin => 20;
-    public int DefaultNMax => 400; // Для O(n^2) по ТЗ
-    public int DefaultStep => 15;
+    public int DefaultNMax => 100_000;
+    public int DefaultStep => 500;
     public int DefaultIterations => 5;
 
     public void Execute(double[] array)
@@ -133,8 +133,8 @@ public class CombSortAlgorithm : ISortAlgorithm
     public string Description => "Улучшение пузырьковой сортировки: сравнивает элементы на расстоянии шага gap, уменьшающегося с фактором сжатия 1.3 (shrink factor) с правилом Rule 11.";
     public string PracticalApplication => "Высокоскоростная сортировка без накладных расходов на память O(1) и стек рекурсии в низкоуровневых драйверах и сетевых устройствах.";
     public int DefaultNMin => 50;
-    public int DefaultNMax => 2000;
-    public int DefaultStep => 50;
+    public int DefaultNMax => 1_000_000;
+    public int DefaultStep => 5000;
     public int DefaultIterations => 10;
 
     public void Execute(double[] array)

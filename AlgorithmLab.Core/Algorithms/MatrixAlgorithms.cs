@@ -12,8 +12,8 @@ public class MatrixMultiplyAlgorithm : IMatrixAlgorithm
     public string Description => "Классический трехцикловый алгоритм умножения матриц A(n×m) и B(m×n) с получением матрицы C(n×n).";
     public string PracticalApplication => "Компьютерная графика, машинное обучение (нейросети), решение систем линейных уравнений, 3D-моделирование.";
     public int DefaultNMin => 10;
-    public int DefaultNMax => 100; // По ТЗ для O(n^3) во избежание зависаний
-    public int DefaultStep => 5;
+    public int DefaultNMax => 1000; // Стартовое; жёсткого потолка в UI нет
+    public int DefaultStep => 50;
     public int DefaultIterations => 3;
 
     public double[,] Execute(double[,] A, double[,] B)

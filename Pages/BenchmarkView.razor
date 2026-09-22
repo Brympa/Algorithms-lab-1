@@ -108,15 +108,15 @@
             <div class="controls-cockpit liquid-glass">
                 <div class="param-group">
                     <span class="param-label">N min:</span>
-                    <NumericStepper @bind-Value="nMin" Min="1" Max="100000" Step="10" Width="72" />
+                    <NumericStepper @bind-Value="nMin" Min="1" Max="2147483646" Step="10" Width="72" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">N max:</span>
-                    <NumericStepper @bind-Value="nMax" Min="10" Max="200000" Step="50" Width="82" />
+                    <NumericStepper @bind-Value="nMax" Min="10" Max="2147483647" Step="50" Width="82" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">Шаг:</span>
-                    <NumericStepper @bind-Value="step" Min="1" Max="10000" Step="10" Width="68" />
+                    <NumericStepper @bind-Value="step" Min="1" Max="2147483647" Step="10" Width="68" />
                 </div>
                 <div class="param-group">
                     <span class="param-label">Прогонов:</span>
@@ -410,6 +410,7 @@
     private int currentProgressN = 0;
     private int outliersCount = 0;
     private bool isFromCache = false;
+    private int lastAppliedDefaultNMax = 0;
     private ExperimentRecord? lastResult;
 
     private bool isCurrentAlgoRunning => QueueService.CurrentRunningItem?.Algorithm.Id == currentAlgorithm?.Id;
@@ -447,11 +448,25 @@
 
     private void SelectAlgorithm(IAlgorithm algo)
     {
+        bool isFirstSelection = currentAlgorithm == null;
+        bool userTouchedNMax = !isFirstSelection && nMax != lastAppliedDefaultNMax;
+
         currentAlgorithm = algo;
         nMin = algo.DefaultNMin;
-        nMax = algo.DefaultNMax;
         step = algo.DefaultStep;
-        runsPerN = 5;
+        if (runsPerN <= 0) runsPerN = 5;
+
+        // Не «утыкиваем» N max в DefaultNMax, если пользователь уже менял его руками
+        if (isFirstSelection || !userTouchedNMax)
+        {
+            nMax = algo.DefaultNMax;
+        }
+        else if (nMax < nMin)
+        {
+            nMax = Math.Max(nMin, algo.DefaultNMax);
+        }
+        lastAppliedDefaultNMax = algo.DefaultNMax;
+
         currentProgressN = 0;
         outliersCount = 0;
         isFromCache = false;

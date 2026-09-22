@@ -29,28 +29,28 @@
     <div class="controls-cockpit liquid-glass">
         <div class="param-group">
             <span class="param-label">n min:</span>
-            <NumericStepper @bind-Value="nMin" Min="5" Max="100" Step="5" Disabled="@isRunning" Width="60" />
+            <NumericStepper @bind-Value="nMin" Min="1" Max="2147483646" Step="5" Disabled="@isRunning" Width="60" />
         </div>
         <div class="param-group">
             <span class="param-label">n max:</span>
-            <NumericStepper @bind-Value="nMax" Min="10" Max="120" Step="10" Disabled="@isRunning" Width="65" />
+            <NumericStepper @bind-Value="nMax" Min="2" Max="2147483647" Step="10" Disabled="@isRunning" Width="65" />
         </div>
         <div class="param-group">
             <span class="param-label">Шаг n:</span>
-            <NumericStepper @bind-Value="stepN" Min="5" Max="30" Step="5" Disabled="@isRunning" Width="55" />
+            <NumericStepper @bind-Value="stepN" Min="1" Max="2147483647" Step="5" Disabled="@isRunning" Width="55" />
         </div>
 
         <div class="param-group">
             <span class="param-label">m min:</span>
-            <NumericStepper @bind-Value="mMin" Min="5" Max="100" Step="5" Disabled="@isRunning" Width="60" />
+            <NumericStepper @bind-Value="mMin" Min="1" Max="2147483646" Step="5" Disabled="@isRunning" Width="60" />
         </div>
         <div class="param-group">
             <span class="param-label">m max:</span>
-            <NumericStepper @bind-Value="mMax" Min="10" Max="120" Step="10" Disabled="@isRunning" Width="65" />
+            <NumericStepper @bind-Value="mMax" Min="2" Max="2147483647" Step="10" Disabled="@isRunning" Width="65" />
         </div>
         <div class="param-group">
             <span class="param-label">Шаг m:</span>
-            <NumericStepper @bind-Value="stepM" Min="5" Max="30" Step="5" Disabled="@isRunning" Width="55" />
+            <NumericStepper @bind-Value="stepM" Min="1" Max="2147483647" Step="5" Disabled="@isRunning" Width="55" />
         </div>
 
         <div class="btn-actions-group">

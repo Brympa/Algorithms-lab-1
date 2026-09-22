@@ -13,8 +13,8 @@ public class ConstantFunctionAlgorithm : IVectorAlgorithm
     public string Description => "Возвращает константное значение 1.0 независимо от размера вектора.";
     public string PracticalApplication => "Используется для оценки базовых накладных расходов вызова функции и доступа к объекту.";
     public int DefaultNMin => 1000;
-    public int DefaultNMax => 50000;
-    public int DefaultStep => 2500;
+    public int DefaultNMax => 1_000_000; // Стартовое; жёсткого потолка в UI нет
+    public int DefaultStep => 5000;
     public int DefaultIterations => 200;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -34,8 +34,8 @@ public class SumFunctionAlgorithm : IVectorAlgorithm
     public string Description => "Вычисляет сумму всех элементов вектора линейным проходом.";
     public string PracticalApplication => "Базовая операция статистического анализа, вычисления среднего значения, агрегации данных.";
     public int DefaultNMin => 100;
-    public int DefaultNMax => 10000;
-    public int DefaultStep => 500;
+    public int DefaultNMax => 1_000_000;
+    public int DefaultStep => 5000;
     public int DefaultIterations => 50;
 
     public double Execute(double[] vector)
@@ -59,8 +59,8 @@ public class ProductFunctionAlgorithm : IVectorAlgorithm
     public string Description => "Вычисляет произведение элементов вектора. Для предотвращения переполнения нормализуется.";
     public string PracticalApplication => "Геометрическое среднее, вычисление вероятностей независимых событий.";
     public int DefaultNMin => 100;
-    public int DefaultNMax => 10000;
-    public int DefaultStep => 500;
+    public int DefaultNMax => 1_000_000;
+    public int DefaultStep => 5000;
     public int DefaultIterations => 50;
 
     public double Execute(double[] vector)
@@ -91,8 +91,8 @@ public class NaivePolynomialAlgorithm : IVectorAlgorithm
     public string Description => "Вычисляет P(x) = ∑ v_k · x^{k-1}, явно вычисляя степень x^{k-1} вложенным циклом для каждого слагаемого.";
     public string PracticalApplication => "Демонстрация квадратичной неэффективности прямолинейной математической реализации.";
     public int DefaultNMin => 20;
-    public int DefaultNMax => 400; // Откалибровано по ТЗ, чтобы не вешать браузер
-    public int DefaultStep => 15;
+    public int DefaultNMax => 100_000; // Стартовое; пользователь может задать любое N max
+    public int DefaultStep => 500;
     public int DefaultIterations => 10;
 
     public double Execute(double[] vector)
@@ -128,8 +128,8 @@ public class HornerPolynomialAlgorithm : IVectorAlgorithm
     public string Description => "Вычисляет значение многочлена по схеме Горнера: v_1 + x(v_2 + x(v_3 + ...)).";
     public string PracticalApplication => "Стандарт вычисления полиномов в математических сопроцессорах, интерполяции и CAD-системах.";
     public int DefaultNMin => 100;
-    public int DefaultNMax => 10000;
-    public int DefaultStep => 500;
+    public int DefaultNMax => 1_000_000;
+    public int DefaultStep => 5000;
     public int DefaultIterations => 50;
 
     public double Execute(double[] vector)

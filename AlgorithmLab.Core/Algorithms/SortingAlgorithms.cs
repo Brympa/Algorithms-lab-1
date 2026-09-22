@@ -12,8 +12,8 @@ public class BubbleSortAlgorithm : ISortAlgorithm
     public string Description => "Классическая обменная сортировка: сравнивает соседние элементы и меняет их местами.";
     public string PracticalApplication => "Обучение алгоритмам, быстрая проверка почти отсортированных коротких массивов.";
     public int DefaultNMin => 20;
-    public int DefaultNMax => 400; // По ТЗ для O(n^2)
-    public int DefaultStep => 15;
+    public int DefaultNMax => 100_000; // Стартовое; жёсткого потолка в UI нет
+    public int DefaultStep => 500;
     public int DefaultIterations => 5;
 
     public void Execute(double[] array)
@@ -45,8 +45,8 @@ public class QuickSortAlgorithm : ISortAlgorithm
     public string Description => "Рекурсивный алгоритм 'разделяй и властвуй' с выбором опорного элемента (Pivot) и разбиением Ломуто/Хоара.";
     public string PracticalApplication => "Универсальная эффективная сортировка общего назначения в высокопроизводительных движках.";
     public int DefaultNMin => 50;
-    public int DefaultNMax => 2000;
-    public int DefaultStep => 50;
+    public int DefaultNMax => 1_000_000;
+    public int DefaultStep => 5000;
     public int DefaultIterations => 10;
 
     public void Execute(double[] array)
@@ -101,8 +101,8 @@ public class TimsortAlgorithm : ISortAlgorithm
     public string Description => "Стандартная гибридная оптимизированная сортировка платформы .NET (IntroSort: QuickSort + HeapSort + InsertionSort).";
     public string PracticalApplication => "Используется по умолчанию в стандартных библиотеках языков программирования (Array.Sort, List.Sort).";
     public int DefaultNMin => 50;
-    public int DefaultNMax => 2000;
-    public int DefaultStep => 50;
+    public int DefaultNMax => 1_000_000;
+    public int DefaultStep => 5000;
     public int DefaultIterations => 10;
 
     public void Execute(double[] array)
